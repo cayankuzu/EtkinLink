@@ -32,12 +32,26 @@ jobs:
 
   android-debug:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     needs: quality
     defaults:
       run:
         working-directory: mobile
     steps:
       - uses: actions/checkout@v4
+      - name: Android derlemesi icin disk alani ac
+        shell: bash
+        run: |
+          set -euxo pipefail
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/share/boost /opt/az
+          if [[ -d "${ANDROID_HOME}/ndk" ]]; then
+            find "${ANDROID_HOME}/ndk" -mindepth 1 -maxdepth 1 -type d ! -name '27.1.12297006' -print0 \
+              | xargs -0 --no-run-if-empty sudo rm -rf
+          fi
+          sudo apt-get clean
+          docker system prune --all --force || true
+          df -h /
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -50,10 +64,13 @@ jobs:
           cache: gradle
       - run: npm ci
       - run: chmod +x android/gradlew
-      - run: ./gradlew assembleDebug --no-daemon
+      - run: ./gradlew :app:assembleDebug --no-daemon --stacktrace --max-workers=2 -PreactNativeArchitectures=arm64-v8a
         working-directory: mobile/android
+        env:
+          NODE_ENV: development
       - uses: actions/upload-artifact@v4
         with:
           name: etkinlink-debug-apk
           path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+          retention-days: 7
