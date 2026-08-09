@@ -11,6 +11,7 @@
     "format:check": "prettier --check \"src/**/*.{ts,tsx}\" \"__tests__/**/*.{ts,tsx}\" \"*.{js,json,md}\"",
     "format": "prettier --write \"src/**/*.{ts,tsx}\" \"__tests__/**/*.{ts,tsx}\" \"*.{js,json,md}\"",
     "architecture": "depcruise src --config .dependency-cruiser.cjs",
+    "audit:production": "node ./scripts/audit-production.cjs",
     "deadcode": "knip",
     "start": "expo start --dev-client",
     "start:clear": "expo start --dev-client --clear",

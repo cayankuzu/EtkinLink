@@ -32,3 +32,11 @@ Sohbette daha önce paylaşılmış secret'lar güvenli kabul edilmez; üretimde
 3. Supabase Realtime ayarında private channel zorunluluğunu etkinleştir.
 4. Release keystore ve CI secret'larını güvenli secret store'a koy.
 5. Brevo için kişisel Gmail yerine DKIM/DMARC doğrulanmış alan adı kullan.
+
+## Geçici dependency audit istisnası
+
+Metro'nun transitif `image-size` bağımlılığı için yayımlanmış
+`GHSA-w3rx-r6r6-pgpr` ve `GHSA-5p2g-fcmc-qvqq` kayıtlarında henüz yamalı sürüm
+yoktur. CI yalnızca bu iki advisory'den türeyen zinciri geçici olarak kabul eder;
+yeni bir high/critical bulgu kalite kapısını durdurur. Yamalı sürüm yayımlandığında
+`mobile/scripts/audit-production.cjs` allowlist'i kaldırılmalıdır.
