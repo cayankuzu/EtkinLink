@@ -1,0 +1,10 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": ["App.tsx", "src/**/*.test.{ts,tsx}"],
+  "project": ["src/**/*.{ts,tsx}", "__tests__/**/*.{ts,tsx}"],
+  "ignoreDependencies": [
+    "eslint-import-resolver-typescript",
+    "eslint-plugin-import"
+  ],
+  "ignoreBinaries": ["gradlew.bat"]
+}

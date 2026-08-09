@@ -1,0 +1,7 @@
+node_modules/
+node_modules-stale-*/
+coverage/
+android/app/build/
+android/app/.cxx*/
+android/**/*-stale-*/
+ios/Pods/

@@ -1,0 +1,22 @@
+{
+  "name": "etkinlink-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "start": "npm --prefix mobile run start --",
+    "start:clear": "npm --prefix mobile run start:clear --",
+    "android": "npm --prefix mobile run android",
+    "typecheck": "npm --prefix mobile run typecheck",
+    "lint": "npm --prefix mobile run lint",
+    "test": "npm --prefix mobile run test",
+    "verify": "npm --prefix mobile run verify",
+    "build:debug": "npm --prefix mobile run build:debug",
+    "doctor": "npm --prefix mobile run doctor"
+  },
+  "engines": {
+    "node": ">=22.11.0"
+  },
+  "devDependencies": {
+    "etkinlink-expo-root-proxy": "file:tools/expo-root-proxy"
+  }
+}

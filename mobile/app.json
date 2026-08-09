@@ -1,0 +1,43 @@
+{
+  "expo": {
+    "name": "EtkinLink",
+    "slug": "etkinlink",
+    "version": "1.0.0",
+    "scheme": "etkinlink",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "icon": "./src/assets/images/etkinlink-symbol.png",
+    "android": {
+      "package": "com.etkinlink.app",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./src/assets/images/etkinlink-symbol.png",
+        "backgroundColor": "#F7F8FC"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "com.etkinlink.app",
+      "buildNumber": "1",
+      "supportsTablet": false
+    },
+    "plugins": [
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./src/assets/images/etkinlink-symbol.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#F7F8FC"
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "EtkinLink profil fotoğraflarını galerine kaydetmek için izin ister.",
+          "savePhotosPermission": "EtkinLink seçtiğin profil fotoğrafını galerine kaydeder."
+        }
+      ]
+    ]
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "etkinlink-expo-root-proxy",
+  "version": "1.0.0",
+  "private": true,
+  "bin": {
+    "expo": "bin/expo.js"
+  }
+}
