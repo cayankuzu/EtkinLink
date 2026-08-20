@@ -268,6 +268,52 @@ describe('push token yaşam döngüsü', () => {
     expect(jest.getTimerCount()).toBe(1);
   });
 
+  it('zamanlanmış kayıt tekrarının hatasını telemetriye iletir', async () => {
+    jest.useFakeTimers();
+    const error = new Error('retry registration denied');
+    mockRpc.mockResolvedValue({ data: null, error });
+
+    await expect(enablePushNotifications('user-1')).rejects.toBe(error);
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(5_000);
+    });
+
+    expect(mockCaptureAppError).toHaveBeenCalledWith(error, {
+      operation: 'push.registration.retry',
+    });
+    expect(
+      mockRpc.mock.calls.filter(call => call[0] === 'register_push_token'),
+    ).toHaveLength(2);
+  });
+
+  it('izin iptal edildiğinde saklanan kullanıcı tokenını pasifleştirir', async () => {
+    storageGetItem.mockResolvedValue(
+      JSON.stringify({
+        token: 'ExponentPushToken[stored-token]',
+        userId: 'user-1',
+      }),
+    );
+    getPermissionsAsync.mockResolvedValue({
+      status: 'denied',
+      granted: false,
+      canAskAgain: false,
+      expires: 'never',
+    } as Notifications.NotificationPermissionsStatus);
+
+    const { unmount } = await renderHook(() => usePushRegistration('user-1'));
+
+    await waitFor(() => {
+      expect(mockRpc).toHaveBeenCalledWith('unregister_push_token', {
+        expo_token: 'ExponentPushToken[stored-token]',
+      });
+    });
+    expect(storageRemoveItem).toHaveBeenCalledWith(
+      '@etkinlink/push-registration-v1',
+    );
+
+    await unmount();
+  });
+
   it('bellekte token olmasa da saklanan tokenı sunucudan ve cihazdan siler', async () => {
     storageGetItem.mockResolvedValue(
       JSON.stringify({

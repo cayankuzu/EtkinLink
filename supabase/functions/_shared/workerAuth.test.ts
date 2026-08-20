@@ -20,12 +20,12 @@ Deno.test("worker auth eksik header ve 32 karakterden kısa sunucu secret'ini re
 });
 
 Deno.test("worker auth yalnızca güncel secret'in birebir eşleşmesini kabul eder", () => {
-  const activeSecret = "active-worker-secret-123456789012345";
+  const activeSecret = "a".repeat(32);
   const active = new Request("https://worker.test", {
     headers: { "x-push-worker-secret": activeSecret },
   });
   const revoked = new Request("https://worker.test", {
-    headers: { "x-push-worker-secret": "revoked-secret-123456789012345678" },
+    headers: { "x-push-worker-secret": "r".repeat(32) },
   });
   assert(isAuthorizedWorker(active, activeSecret), "active secret");
   assert(!isAuthorizedWorker(revoked, activeSecret), "revoked secret");

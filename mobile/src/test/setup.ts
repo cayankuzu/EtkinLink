@@ -101,7 +101,7 @@ jest.mock('react-native-worklets', () =>
 );
 jest.mock('react-native-config', () => ({
   SUPABASE_URL: 'https://example.supabase.co',
-  SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_testkey1',
+  SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_aaaaaaaa',
   SENTRY_DSN: '',
   SENTRY_TRACES_SAMPLE_RATE: '0',
 }));

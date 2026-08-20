@@ -50,32 +50,34 @@ jobs:
   database-security:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    environment: staging-security
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: supabase/setup-cli@46f7f98c7f948ad727d22c1e67fab04c223a0520 # v3.0.0
         with:
           version: 2.101.0
-      - name: Staging şema güvenliğini doğrula
+      - name: Izole yerel Supabase veritabanini baslat
         shell: bash
-        env:
-          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
-          STAGING_PROJECT_REF: ${{ secrets.STAGING_PROJECT_REF }}
         run: |
           set -euo pipefail
-          test -n "$STAGING_DATABASE_URL"
-          test -n "$STAGING_PROJECT_REF"
-          [[ "$STAGING_DATABASE_URL" == *"$STAGING_PROJECT_REF"* ]]
-          [[ "$STAGING_PROJECT_REF" != "hwolchgllljzzvwnzool" ]]
           mkdir -p artifacts/database-security
-          supabase db lint --db-url "$STAGING_DATABASE_URL" --level warning --fail-on warning \
+          supabase db start \
+            2>&1 | tee artifacts/database-security/db-start.txt
+      - name: Yerel sema guvenligini dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase db lint --local --schema public --level warning --fail-on warning \
             2>&1 | tee artifacts/database-security/db-lint.txt
-          psql "$STAGING_DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/rls_and_security.sql \
+          supabase test db --local \
             2>&1 | tee artifacts/database-security/pgtap.txt
+      - name: Yerel Supabase veritabanini durdur
+        if: always()
+        continue-on-error: true
+        run: supabase stop --no-backup
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
-          name: staging-database-security-evidence
+          name: local-database-security-evidence
           path: artifacts/database-security
           if-no-files-found: error
           retention-days: 30

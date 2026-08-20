@@ -1,0 +1,5 @@
+# Reviewed Firebase client configuration and test-only fixtures from b675bb8.
+b675bb82fe2fe0109c10a42c4b8679f9b09b2b87:mobile/android/app/google-services.json:gcp-api-key:18
+b675bb82fe2fe0109c10a42c4b8679f9b09b2b87:mobile/google-services.json:gcp-api-key:18
+b675bb82fe2fe0109c10a42c4b8679f9b09b2b87:mobile/src/test/setup.ts:generic-api-key:104
+b675bb82fe2fe0109c10a42c4b8679f9b09b2b87:supabase/functions/_shared/workerAuth.test.ts:generic-api-key:28

@@ -285,7 +285,8 @@ Deno.test("multi-device partial failure retries only the failed device", async (
     getEnv: env(),
     createAdmin: () => retry.admin as never,
     fetch: async (_input, init) => {
-      retriedMessages = JSON.parse(String(init?.body));
+      const body = init && "body" in init ? init.body : undefined;
+      retriedMessages = JSON.parse(String(body));
       return new Response(
         JSON.stringify({
           data: [{ status: "ok", id: "ticket-2" }],
