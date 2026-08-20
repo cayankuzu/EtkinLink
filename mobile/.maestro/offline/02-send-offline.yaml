@@ -1,0 +1,9 @@
+appId: com.etkinlink.app
+name: Bağlantı yokken durable outbox
+---
+- assertVisible: Özel mesaj yaz
+- tapOn: Özel mesaj yaz
+- inputText: ${E2E_OFFLINE_MESSAGE}
+- hideKeyboard
+- tapOn: Mesajı gönder
+- assertVisible: ${E2E_OFFLINE_MESSAGE}

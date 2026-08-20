@@ -3,23 +3,18 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppButton, AppText, TextField } from '@shared/components';
 import { contentLimits } from '@shared/constants/limits';
-import { useAvailabilityCheck } from '@shared/hooks/useAvailabilityCheck';
 import { colors, radius, spacing } from '@shared/theme';
 import { Check, LockKeyhole, Mail, Route } from 'lucide-react-native';
-import { useEffect, useMemo, useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { AuthLayout } from './AuthLayout';
 import { signUpSchema, type SignUpValues } from './authSchemas';
-import { isEmailAvailable, normalizeEmail } from './authService';
+import { normalizeEmail } from './authService';
 import { useRegistrationDraftStore } from './registrationDraftStore';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'SignUp'>;
-
-function isValidEmail(value: string): boolean {
-  return signUpSchema.shape.email.safeParse(value).success;
-}
 
 export function SignUpScreen({ navigation }: Props) {
   const passwordRef = useRef<TextInput>(null);
@@ -31,56 +26,18 @@ export function SignUpScreen({ navigation }: Props) {
     control,
     handleSubmit,
     clearErrors,
-    setError,
     formState: { errors, isSubmitting },
   } = useForm<SignUpValues>({
     resolver: zodResolver(signUpSchema),
     defaultValues: { email: draftEmail, password: '' },
   });
-  const email = useWatch({ control, name: 'email' });
   const password = useWatch({ control, name: 'password' });
   const passwordState = useMemo(() => getPasswordState(password), [password]);
-  const emailAvailability = useAvailabilityCheck({
-    value: email,
-    normalize: normalizeEmail,
-    isValid: isValidEmail,
-    check: isEmailAvailable,
-  });
 
-  useEffect(() => {
-    if (emailAvailability === 'unavailable') {
-      setError('email', {
-        type: 'availability',
-        message: 'Bu e-posta adresiyle daha önce hesap oluşturulmuş.',
-      });
-    } else if (emailAvailability === 'available') {
-      clearErrors('email');
-    } else if (emailAvailability === 'error') {
-      setError('email', {
-        type: 'availability',
-        message: 'E-posta uygunluğu kontrol edilemedi. Tekrar dene.',
-      });
-    }
-  }, [clearErrors, emailAvailability, setError]);
-
-  const onSubmit = handleSubmit(async values => {
+  const onSubmit = handleSubmit(values => {
     const normalizedEmail = normalizeEmail(values.email);
-    try {
-      if (!(await isEmailAvailable(normalizedEmail))) {
-        setError('email', {
-          type: 'availability',
-          message: 'Bu e-posta adresiyle daha önce hesap oluşturulmuş.',
-        });
-        return;
-      }
-      setCredentials(normalizedEmail, values.password);
-      navigation.navigate('SignUpProfile');
-    } catch {
-      setError('email', {
-        type: 'availability',
-        message: 'E-posta uygunluğu kontrol edilemedi. Tekrar dene.',
-      });
-    }
+    setCredentials(normalizedEmail, values.password);
+    navigation.navigate('SignUpProfile');
   });
 
   return (
@@ -141,13 +98,6 @@ export function SignUpScreen({ navigation }: Props) {
             }}
             onBlur={onBlur}
             error={errors.email?.message}
-            hint={
-              emailAvailability === 'checking'
-                ? 'E-posta uygunluğu kontrol ediliyor…'
-                : emailAvailability === 'available'
-                ? 'E-posta adresi kullanılabilir.'
-                : undefined
-            }
             maxLength={contentLimits.email}
             showCounter={false}
             keyboardType="email-address"
@@ -189,7 +139,6 @@ export function SignUpScreen({ navigation }: Props) {
 
       <AppButton
         label="Diğer Bilgilere Geç"
-        disabled={emailAvailability !== 'available'}
         loading={isSubmitting}
         onPress={() => void onSubmit()}
         style={styles.submit}
@@ -352,7 +301,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   checkDone: { borderColor: colors.success, backgroundColor: colors.success },
-  submit: { minHeight: 54, borderRadius: radius.lg, marginTop: spacing.xxs },
+  submit: { minHeight: 48, borderRadius: radius.lg, marginTop: spacing.xxs },
   flowNote: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.xs },
   flowText: { flex: 1 },
   footerRow: {

@@ -25,7 +25,7 @@ export function StateView({
   return (
     <View style={styles.container} accessibilityRole="summary">
       <View style={styles.iconWrap}>
-        <Icon size={28} color={colors.brand} />
+        <Icon size={24} color={colors.brand} />
       </View>
       <AppText variant="heading18" align="center">
         {title}
@@ -47,16 +47,16 @@ export function ErrorState(props: Omit<StateViewProps, 'icon'>) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    minHeight: 300,
+    minHeight: 240,
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
     padding: spacing.xl,
   },
   iconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: colors.brandSoft,
     alignItems: 'center',
     justifyContent: 'center',

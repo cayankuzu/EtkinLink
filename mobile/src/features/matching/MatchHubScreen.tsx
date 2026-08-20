@@ -3,13 +3,16 @@ import { getEvent } from '@features/events/eventService';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   AppButton,
+  AppImage,
   AppText,
   ErrorState,
   IconButton,
+  mainTabSafeAreaEdges,
   Screen,
 } from '@shared/components';
 import { premiumComingSoonMessage } from '@shared/constants/premium';
 import { toAppError } from '@shared/lib/errors';
+import { queryKeys } from '@shared/lib/queryKeys';
 import { colors, radius, spacing } from '@shared/theme';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -25,7 +28,7 @@ import {
   X,
 } from 'lucide-react-native';
 import { useState } from 'react';
-import { Image, Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, View } from 'react-native';
 
 import { getMatchingSettings, setMatchingEnabled } from './matchingService';
 
@@ -35,11 +38,11 @@ export function MatchHubScreen({ route, navigation }: Props) {
   const queryClient = useQueryClient();
   const [activated, setActivated] = useState(false);
   const event = useQuery({
-    queryKey: ['event', route.params.eventId],
+    queryKey: queryKeys.events.detail(route.params.eventId),
     queryFn: () => getEvent(route.params.eventId),
   });
   const settings = useQuery({
-    queryKey: ['matching-settings', route.params.eventId],
+    queryKey: queryKeys.matching.settings(route.params.eventId),
     queryFn: () => getMatchingSettings(route.params.eventId),
   });
   const activation = useMutation({
@@ -47,13 +50,13 @@ export function MatchHubScreen({ route, navigation }: Props) {
     onSuccess: () => {
       setActivated(true);
       void queryClient.invalidateQueries({
-        queryKey: ['matching-settings', route.params.eventId],
+        queryKey: queryKeys.matching.settings(route.params.eventId),
       });
     },
   });
   if (event.isError || settings.isError)
     return (
-      <Screen>
+      <Screen safeAreaEdges={mainTabSafeAreaEdges}>
         <ErrorState
           title="Eşleşme alanı açılamadı"
           description={toAppError(event.error ?? settings.error).message}
@@ -64,7 +67,10 @@ export function MatchHubScreen({ route, navigation }: Props) {
     );
   if (event.isLoading || settings.isLoading)
     return (
-      <Screen contentStyle={styles.loadingScreen}>
+      <Screen
+        contentStyle={styles.loadingScreen}
+        safeAreaEdges={mainTabSafeAreaEdges}
+      >
         <View style={styles.loadingBlock} />
         <View style={styles.loadingCard} />
       </Screen>
@@ -77,7 +83,10 @@ export function MatchHubScreen({ route, navigation }: Props) {
       settings.data.interestCount >= 3,
     ].filter(Boolean).length;
     return (
-      <Screen contentStyle={styles.incompleteScreen}>
+      <Screen
+        contentStyle={styles.incompleteScreen}
+        safeAreaEdges={mainTabSafeAreaEdges}
+      >
         <View style={styles.incompleteHeader}>
           <IconButton
             icon={ArrowLeft}
@@ -108,10 +117,7 @@ export function MatchHubScreen({ route, navigation }: Props) {
           style={styles.incompleteEvent}
         >
           {event.data.imageUrl ? (
-            <Image
-              source={{ uri: event.data.imageUrl }}
-              style={styles.eventThumb}
-            />
+            <AppImage uri={event.data.imageUrl} style={styles.eventThumb} />
           ) : (
             <View style={styles.eventThumb} />
           )}
@@ -182,7 +188,11 @@ export function MatchHubScreen({ route, navigation }: Props) {
     (settings.data?.globalEnabled ?? false) &&
     (settings.data?.eventEnabled ?? false);
   return (
-    <Screen scroll contentStyle={styles.screen}>
+    <Screen
+      scroll
+      contentStyle={styles.screen}
+      safeAreaEdges={mainTabSafeAreaEdges}
+    >
       <View style={styles.header}>
         <IconButton icon={ArrowLeft} label="Geri" onPress={navigation.goBack} />
         <AppText variant="heading20">Eşleşme</AppText>
@@ -208,7 +218,7 @@ export function MatchHubScreen({ route, navigation }: Props) {
       </Pressable>
       <View style={styles.hero}>
         <View style={styles.heroIcon}>
-          <UserRoundCheck size={36} color={colors.brand} />
+          <UserRoundCheck size={28} color={colors.brand} />
         </View>
         <AppText variant="heading24" align="center">
           Aynı etkinlikte tanış
@@ -290,7 +300,7 @@ export function MatchHubScreen({ route, navigation }: Props) {
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <View style={styles.successIcon}>
-              <Check size={26} color={colors.success} />
+              <Check size={22} color={colors.success} />
             </View>
             <AppText variant="heading20" align="center">
               Eşleşme açıldı
@@ -365,7 +375,7 @@ function Requirement({ icon, text }: { icon: React.ReactNode; text: string }) {
 const styles = StyleSheet.create({
   loadingScreen: { padding: spacing.md, gap: spacing.md },
   loadingBlock: {
-    height: 72,
+    height: 60,
     borderRadius: radius.lg,
     backgroundColor: colors.surfaceMuted,
   },
@@ -405,7 +415,7 @@ const styles = StyleSheet.create({
   },
   eventChipText: { color: colors.accent },
   incompleteEvent: {
-    minHeight: 72,
+    minHeight: 60,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
@@ -490,9 +500,9 @@ const styles = StyleSheet.create({
   eventText: { flex: 1 },
   hero: { alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.lg },
   heroIcon: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: colors.brandSoft,
     alignItems: 'center',
     justifyContent: 'center',
@@ -518,7 +528,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   activationCard: {
-    minHeight: 76,
+    minHeight: 64,
     borderRadius: radius.lg,
     backgroundColor: colors.surface,
     padding: spacing.md,
@@ -528,7 +538,7 @@ const styles = StyleSheet.create({
   },
   activationText: { flex: 1, gap: spacing.xxs },
   premiumRow: {
-    minHeight: 72,
+    minHeight: 60,
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.border,
@@ -552,9 +562,9 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   successIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: colors.successSoft,
     alignItems: 'center',
     justifyContent: 'center',

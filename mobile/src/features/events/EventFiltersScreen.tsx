@@ -1,8 +1,15 @@
 import type { DiscoverStackParamList } from '@app/navigation/types';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { AppButton, AppText, Chip, IconButton } from '@shared/components';
+import {
+  AppButton,
+  AppText,
+  Chip,
+  IconButton,
+  Screen,
+} from '@shared/components';
 import { normalizeTurkishSearch } from '@shared/constants/cities';
+import { queryKeys } from '@shared/lib/queryKeys';
 import { colors, layout, radius, spacing, typography } from '@shared/theme';
 import { useQuery } from '@tanstack/react-query';
 import { format, isValid, parseISO } from 'date-fns';
@@ -95,7 +102,7 @@ export function EventFiltersScreen({ navigation }: Props) {
   const deferredCategoryQuery = useDeferredValue(categoryQuery.trim());
   const rangeSelected = date.startsWith('range:');
   const availableCategories = useQuery({
-    queryKey: ['event-categories'],
+    queryKey: queryKeys.events.categories,
     queryFn: listEventCategories,
     staleTime: 5 * 60 * 1000,
   });
@@ -165,7 +172,7 @@ export function EventFiltersScreen({ navigation }: Props) {
   }
 
   return (
-    <View style={styles.screen}>
+    <Screen contentStyle={styles.screen}>
       <View style={styles.header}>
         <IconButton icon={ArrowLeft} label="Geri" onPress={navigation.goBack} />
         <AppText variant="heading20">Filtreler</AppText>
@@ -448,14 +455,14 @@ export function EventFiltersScreen({ navigation }: Props) {
           }}
         />
       </View>
-    </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.canvas },
   header: {
-    height: 64,
+    height: layout.headerHeight,
     paddingHorizontal: spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
@@ -473,7 +480,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   selector: {
-    minHeight: 76,
+    minHeight: 56,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.lg,

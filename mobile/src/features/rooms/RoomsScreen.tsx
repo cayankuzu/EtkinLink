@@ -4,17 +4,21 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   AppText,
   ErrorState,
+  mainTabSafeAreaEdges,
   RefreshableContent,
+  Screen,
   Skeleton,
   StateView,
 } from '@shared/components';
 import { toAppError } from '@shared/lib/errors';
+import { queryKeys } from '@shared/lib/queryKeys';
 import { colors, spacing } from '@shared/theme';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RefreshControl, SectionList, StyleSheet, View } from 'react-native';
 
 import { RoomCard } from './RoomCard';
+import { getRoomState } from './roomRules';
 import { listRooms, subscribeToRoomListChanges } from './roomService';
 import type { RoomSummary } from './roomTypes';
 
@@ -23,22 +27,33 @@ type RoomSection = { title: string; data: RoomSummary[] };
 
 export function RoomsScreen({ navigation }: Props) {
   const queryClient = useQueryClient();
+  const [now, setNow] = useState(() => new Date());
   const listRef = useRef<SectionList<RoomSummary, RoomSection>>(null);
   useScrollToTop(listRef);
   const rooms = useInfiniteQuery({
-    queryKey: ['rooms'],
-    queryFn: ({ pageParam }) => listRooms(pageParam),
+    queryKey: queryKeys.rooms.all,
+    queryFn: ({ pageParam, signal }) => listRooms(pageParam, signal),
     initialPageParam: null as import('./roomTypes').RoomCursor | null,
     getNextPageParam: page => page.nextCursor,
   });
   const refreshRooms = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: ['rooms'] });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.rooms.all });
   }, [queryClient]);
   useFocusEffect(refreshRooms);
   useEffect(() => subscribeToRoomListChanges(refreshRooms), [refreshRooms]);
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
   const items = useMemo(
-    () => rooms.data?.pages.flatMap(page => page.items) ?? [],
-    [rooms.data],
+    () =>
+      rooms.data?.pages.flatMap(page =>
+        page.items.map(room => ({
+          ...room,
+          state: getRoomState(room.startAt, room.endAt, now),
+        })),
+      ) ?? [],
+    [now, rooms.data],
   );
   const sections = useMemo<RoomSection[]>(() => {
     const active = items.filter(
@@ -54,7 +69,11 @@ export function RoomsScreen({ navigation }: Props) {
   }, [items]);
 
   return (
-    <View style={styles.screen}>
+    <Screen
+      contentStyle={styles.screen}
+      safeAreaEdges={mainTabSafeAreaEdges}
+      testID="rooms-screen"
+    >
       <View style={styles.header}>
         <View style={styles.headerText}>
           <AppText variant="heading22">Odalar</AppText>
@@ -111,6 +130,7 @@ export function RoomsScreen({ navigation }: Props) {
             <View style={styles.item}>
               <RoomCard
                 room={item}
+                now={now}
                 onPress={() =>
                   navigation.navigate('RoomDetail', { eventId: item.eventId })
                 }
@@ -130,14 +150,14 @@ export function RoomsScreen({ navigation }: Props) {
           }}
         />
       )}
-    </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.canvas },
   header: {
-    minHeight: 72,
+    minHeight: 60,
     justifyContent: 'center',
     paddingHorizontal: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,

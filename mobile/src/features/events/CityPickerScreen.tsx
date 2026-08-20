@@ -1,6 +1,6 @@
 import type { DiscoverStackParamList } from '@app/navigation/types';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { AppText, IconButton, StateView } from '@shared/components';
+import { AppText, IconButton, Screen, StateView } from '@shared/components';
 import {
   normalizeTurkishSearch,
   TURKISH_CITIES,
@@ -35,7 +35,7 @@ export function CityPickerScreen({ navigation }: Props) {
   }
 
   return (
-    <View style={styles.screen}>
+    <Screen contentStyle={styles.screen}>
       <View style={styles.header}>
         <IconButton icon={ArrowLeft} label="Geri" onPress={navigation.goBack} />
         <AppText variant="heading20">Şehir Seç</AppText>
@@ -113,14 +113,14 @@ export function CityPickerScreen({ navigation }: Props) {
           </Pressable>
         )}
       />
-    </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.canvas },
   header: {
-    height: 64,
+    height: layout.headerHeight,
     paddingHorizontal: spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
@@ -149,7 +149,7 @@ const styles = StyleSheet.create({
   clear: { width: 44, height: 44, borderWidth: 0 },
   list: { paddingHorizontal: spacing.md, paddingBottom: spacing.xl },
   city: {
-    minHeight: 52,
+    minHeight: 48,
     paddingHorizontal: spacing.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,

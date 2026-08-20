@@ -1,5 +1,3 @@
-import type { MessagesStackParamList } from '@app/navigation/types';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   AppText,
   ErrorState,
@@ -8,6 +6,7 @@ import {
   Skeleton,
 } from '@shared/components';
 import { toAppError } from '@shared/lib/errors';
+import { queryKeys } from '@shared/lib/queryKeys';
 import { spacing } from '@shared/theme';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react-native';
@@ -22,24 +21,30 @@ import {
 } from './profileService';
 import { ProfileView } from './ProfileView';
 
-type Props = NativeStackScreenProps<MessagesStackParamList, 'PublicProfile'>;
+type Props = {
+  route: { params: { userId: string } };
+  navigation: {
+    goBack: () => void;
+    navigate: (screen: 'EventDetail', params: { eventId: string }) => void;
+  };
+};
 
 export function PublicProfileScreen({ route, navigation }: Props) {
   const [selected, setSelected] = useState<'upcoming' | 'attended'>('upcoming');
   const profile = useQuery({
-    queryKey: ['profile', route.params.userId],
+    queryKey: queryKeys.profile.byId(route.params.userId),
     queryFn: () => getProfile(route.params.userId),
   });
   const upcoming = useQuery({
-    queryKey: ['profile-events', route.params.userId, 'upcoming'],
+    queryKey: queryKeys.profile.events(route.params.userId, 'upcoming'),
     queryFn: () => listProfileEvents(route.params.userId, 'upcoming'),
   });
   const attended = useQuery({
-    queryKey: ['profile-events', route.params.userId, 'attended'],
+    queryKey: queryKeys.profile.events(route.params.userId, 'attended'),
     queryFn: () => listProfileEvents(route.params.userId, 'attended'),
   });
   const matchContext = useQuery({
-    queryKey: ['match-context', route.params.userId],
+    queryKey: queryKeys.profile.matchContext(route.params.userId),
     queryFn: () => getMatchContext(route.params.userId),
   });
   async function refreshProfile(): Promise<void> {
@@ -119,7 +124,7 @@ export function PublicProfileScreen({ route, navigation }: Props) {
 const styles = StyleSheet.create({
   screen: { padding: spacing.md },
   header: {
-    height: 52,
+    height: 48,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

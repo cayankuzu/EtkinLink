@@ -72,6 +72,48 @@ if ($sourceLockHash -ne $installedLockHash -or -not (Test-Path -LiteralPath $exp
     Set-Content -LiteralPath $dependencyMarker -Value $sourceLockHash -NoNewline
 }
 
+$targetDevice = $null
+$reactNativeArchitectures = 'arm64-v8a,x86,x86_64'
+
+if ($Install) {
+    $adb = Join-Path $env:LOCALAPPDATA 'Android\Sdk\platform-tools\adb.exe'
+    if (-not (Test-Path -LiteralPath $adb)) {
+        throw 'Android SDK platform-tools/adb bulunamadı.'
+    }
+
+    $connectedDevices = @(
+        & $adb devices |
+            Select-Object -Skip 1 |
+            ForEach-Object {
+                if ($_ -match '^([^\s]+)\s+device$') {
+                    $Matches[1]
+                }
+            }
+    )
+
+    if ($Device) {
+        if ($connectedDevices -notcontains $Device) {
+            throw "İstenen Android cihazı bağlı değil: $Device"
+        }
+        $targetDevice = $Device
+    } elseif ($connectedDevices.Count -eq 1) {
+        $targetDevice = $connectedDevices[0]
+    } elseif ($connectedDevices.Count -eq 0) {
+        throw 'Bağlı/emülatör durumda bir Android cihazı yok.'
+    } else {
+        throw "Birden fazla Android cihazı bağlı. -Device <seri> ile hedefi seçin: $($connectedDevices -join ', ')"
+    }
+
+    $deviceAbi = ((& $adb -s $targetDevice shell getprop ro.product.cpu.abi | Select-Object -First 1) -as [string]).Trim()
+    $supportedArchitectures = @('arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64')
+    if ($supportedArchitectures -notcontains $deviceAbi) {
+        throw "Desteklenmeyen Android cihaz mimarisi: $deviceAbi"
+    }
+
+    $reactNativeArchitectures = $deviceAbi
+    Write-Host "Hedef cihaz mimarisi seçildi: $targetDevice ($reactNativeArchitectures)"
+}
+
 $env:NODE_ENV = 'development'
 $env:CI = '1'
 
@@ -83,7 +125,7 @@ Write-Host 'Expo Development Build APK derleniyor...'
     --max-workers=1 `
     --no-daemon `
     '-Pkotlin.compiler.execution.strategy=in-process' `
-    '-PreactNativeArchitectures=arm64-v8a,x86,x86_64'
+    "-PreactNativeArchitectures=$reactNativeArchitectures"
 
 if ($LASTEXITCODE -ne 0) {
     throw "Android debug derlemesi başarısız oldu ($LASTEXITCODE)."
@@ -107,34 +149,6 @@ Write-Host "SHA-256: $apkHash"
 
 if (-not $Install) {
     exit 0
-}
-
-$adb = Join-Path $env:LOCALAPPDATA 'Android\Sdk\platform-tools\adb.exe'
-if (-not (Test-Path -LiteralPath $adb)) {
-    throw 'Android SDK platform-tools/adb bulunamadı.'
-}
-
-$connectedDevices = @(
-    & $adb devices |
-        Select-Object -Skip 1 |
-        ForEach-Object {
-            if ($_ -match '^([^\s]+)\s+device$') {
-                $Matches[1]
-            }
-        }
-)
-
-if ($Device) {
-    if ($connectedDevices -notcontains $Device) {
-        throw "İstenen Android cihazı bağlı değil: $Device"
-    }
-    $targetDevice = $Device
-} elseif ($connectedDevices.Count -eq 1) {
-    $targetDevice = $connectedDevices[0]
-} elseif ($connectedDevices.Count -eq 0) {
-    throw 'Bağlı/emülatör durumda bir Android cihazı yok. Emülatörü açıp komutu yeniden çalıştırın.'
-} else {
-    throw "Birden fazla Android cihazı bağlı. -Device <seri> ile hedefi seçin: $($connectedDevices -join ', ')"
 }
 
 Write-Host "APK Android cihazına kuruluyor: $targetDevice"

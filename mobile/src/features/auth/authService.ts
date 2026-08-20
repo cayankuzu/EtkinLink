@@ -1,7 +1,7 @@
 import { env } from '@shared/config/env';
+import { AppError } from '@shared/lib/errors';
 import { supabase } from '@shared/lib/supabase';
-import type { Database } from '@shared/types/database';
-import { createClient } from '@supabase/supabase-js';
+import { captureAppError } from '@shared/lib/telemetry';
 
 import type { SignInValues, SignUpValues } from './authSchemas';
 
@@ -9,34 +9,15 @@ export function normalizeEmail(value: string): string {
   return value.trim().toLocaleLowerCase('tr-TR');
 }
 
-export async function isEmailAvailable(value: string): Promise<boolean> {
-  const { data, error } = await supabase.rpc('is_email_available', {
-    candidate_email: normalizeEmail(value),
-  });
-  if (error) throw error;
-  return data;
-}
-
-const authCallbackUrl =
-  'https://cayankuzu.github.io/EtkinLink_web/auth/confirm.html';
-const resetPasswordUrl =
-  'https://cayankuzu.github.io/EtkinLink_web/auth/reset-password.html';
-
-// Recovery links are completed in the user's browser. An isolated implicit-flow
-// client keeps the recovery token usable on that browser without changing the
-// app's persistent PKCE session.
-const passwordRecoveryClient = createClient<Database>(
-  env.supabaseUrl,
-  env.supabasePublishableKey,
-  {
-    auth: {
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-      persistSession: false,
-      flowType: 'implicit',
-    },
-  },
-);
+const authCallbackUrl = 'etkinlink://auth/callback';
+const resetPasswordUrl = 'etkinlink://auth/reset-password';
+const allowedAuthCallbackPaths = new Set(['/callback', '/reset-password']);
+const forbiddenSessionParameters = [
+  'access_token',
+  'refresh_token',
+  'provider_token',
+  'provider_refresh_token',
+] as const;
 
 export type RegistrationMetadata = {
   fullName: string;
@@ -48,19 +29,36 @@ export type RegistrationMetadata = {
   interestIds: string[];
 };
 
+function throwAuthError(error: Error, operation: string): never {
+  captureAppError(error, { operation });
+  throw error;
+}
+
+export function assertAuthBackendConfigured(
+  isConfigured = env.isSupabaseConfigured,
+): void {
+  if (isConfigured) return;
+  throw new AppError(
+    'configuration',
+    'Uygulamanın sunucu bağlantısı yapılandırılamadı. Lütfen güncel sürümü yükleyip tekrar dene.',
+  );
+}
+
 export async function signIn(values: SignInValues): Promise<void> {
+  assertAuthBackendConfigured();
   const { error } = await supabase.auth.signInWithPassword({
     email: normalizeEmail(values.email),
     password: values.password,
   });
-  if (error) throw error;
+  if (error) throwAuthError(error, 'auth.sign_in');
 }
 
 export async function signUp(
   values: SignUpValues,
   metadata: RegistrationMetadata,
 ): Promise<void> {
-  const { data, error } = await supabase.auth.signUp({
+  assertAuthBackendConfigured();
+  const { error } = await supabase.auth.signUp({
     email: normalizeEmail(values.email),
     password: values.password,
     options: {
@@ -76,52 +74,72 @@ export async function signUp(
       },
     },
   });
-  if (error) throw error;
-  if (data.user && data.user.identities?.length === 0) {
-    throw new Error('Bu e-posta adresiyle daha önce hesap oluşturulmuş.');
-  }
+  if (error) throwAuthError(error, 'auth.sign_up');
 }
 
 export async function resendSignUpEmail(email: string): Promise<void> {
+  assertAuthBackendConfigured();
   const { error } = await supabase.auth.resend({
     type: 'signup',
     email: email.trim().toLocaleLowerCase('tr-TR'),
     options: { emailRedirectTo: authCallbackUrl },
   });
-  if (error) throw error;
+  if (error) throwAuthError(error, 'auth.resend_signup');
 }
 
 export async function sendPasswordReset(email: string): Promise<void> {
-  const { error } = await passwordRecoveryClient.auth.resetPasswordForEmail(
+  assertAuthBackendConfigured();
+  const { error } = await supabase.auth.resetPasswordForEmail(
     email.trim().toLocaleLowerCase('tr-TR'),
     { redirectTo: resetPasswordUrl },
   );
-  if (error) throw error;
+  if (error) throwAuthError(error, 'auth.password_reset');
 }
 
 export async function updatePassword(password: string): Promise<void> {
+  assertAuthBackendConfigured();
   const { error } = await supabase.auth.updateUser({ password });
-  if (error) throw error;
+  if (error) throwAuthError(error, 'auth.password_update');
 }
 
-export async function exchangeAuthCode(url: string): Promise<boolean> {
-  const parsed = new URL(url);
-  const code = parsed.searchParams.get('code');
-  if (code) {
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (error) throw error;
-    return true;
-  }
+export type AuthCodeExchangeResult = 'session' | 'recovery' | 'ignored';
 
-  const accessToken = parsed.searchParams.get('access_token');
-  const refreshToken = parsed.searchParams.get('refresh_token');
-  if (accessToken && refreshToken) {
-    const { error } = await supabase.auth.setSession({
-      access_token: accessToken,
-      refresh_token: refreshToken,
-    });
-    if (error) throw error;
-    return true;
+function hasRawSessionParameters(parsed: URL): boolean {
+  const fragment = new URLSearchParams(parsed.hash.replace(/^#/, ''));
+  return forbiddenSessionParameters.some(
+    parameter => parsed.searchParams.has(parameter) || fragment.has(parameter),
+  );
+}
+
+export function isTrustedAuthCallback(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.protocol === 'etkinlink:' &&
+      parsed.hostname === 'auth' &&
+      allowedAuthCallbackPaths.has(parsed.pathname) &&
+      !hasRawSessionParameters(parsed)
+    );
+  } catch {
+    return false;
   }
-  return false;
+}
+
+export async function exchangeAuthCode(
+  url: string,
+): Promise<AuthCodeExchangeResult> {
+  const parsed = new URL(url);
+  if (!isTrustedAuthCallback(url)) return 'ignored';
+  if (hasRawSessionParameters(parsed)) {
+    throw new Error(
+      'Oturum anahtarı içeren bağlantılar güvenlik nedeniyle reddedildi.',
+    );
+  }
+  const code = parsed.searchParams.get('code');
+  if (!code || code.length > 4096) return 'ignored';
+
+  assertAuthBackendConfigured();
+  const { error } = await supabase.auth.exchangeCodeForSession(code);
+  if (error) throwAuthError(error, 'auth.code_exchange');
+  return parsed.pathname === '/reset-password' ? 'recovery' : 'session';
 }

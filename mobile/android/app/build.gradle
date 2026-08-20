@@ -3,6 +3,23 @@ apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 apply from: project(':react-native-config').projectDir.getPath() + "/dotenv.gradle"
 
+def configuredGoogleServicesPath = System.getenv("GOOGLE_SERVICES_JSON")
+def googleServicesSource = configuredGoogleServicesPath
+    ? file(configuredGoogleServicesPath)
+    : rootProject.file("../google-services.json")
+def googleServicesTarget = file("google-services.json")
+if (googleServicesSource.exists() && googleServicesSource.canonicalPath != googleServicesTarget.canonicalPath) {
+    copy {
+        from googleServicesSource
+        into projectDir
+        rename { "google-services.json" }
+    }
+}
+def hasGoogleServices = googleServicesTarget.exists()
+if (hasGoogleServices) {
+    apply plugin: "com.google.gms.google-services"
+}
+
 /**
  * This is the configuration block to customize your React Native Android app.
  * By default you don't need to apply any configuration, just uncomment the lines you need.
@@ -56,14 +73,20 @@ react {
 
     // Resolve the entry point and bundle through Expo CLI for development builds.
     entryFile = file(["node", "-e", "require('expo/scripts/resolveAppEntry')", rootDir.getAbsoluteFile().getParentFile().getAbsolutePath(), "android", "absolute"].execute(null, rootDir).text.trim())
-    cliFile = new File(["node", "--print", "require.resolve('@expo/cli')"].execute(null, rootDir).text.trim())
+    cliFile = new File(["node", "--print", "require.resolve('@expo/cli', { paths: [require.resolve('expo/package.json')] })"].execute(null, rootDir).text.trim())
     bundleCommand = "export:embed"
 }
 
 /**
  * Set this to true to Run Proguard on Release builds to minify the Java bytecode.
  */
-def enableProguardInReleaseBuilds = false
+def enableProguardInReleaseBuilds = true
+
+def releaseStoreFile = project.findProperty("ETKINLINK_UPLOAD_STORE_FILE") ?: System.getenv("ETKINLINK_UPLOAD_STORE_FILE")
+def releaseStorePassword = project.findProperty("ETKINLINK_UPLOAD_STORE_PASSWORD") ?: System.getenv("ETKINLINK_UPLOAD_STORE_PASSWORD")
+def releaseKeyAlias = project.findProperty("ETKINLINK_UPLOAD_KEY_ALIAS") ?: System.getenv("ETKINLINK_UPLOAD_KEY_ALIAS")
+def releaseKeyPassword = project.findProperty("ETKINLINK_UPLOAD_KEY_PASSWORD") ?: System.getenv("ETKINLINK_UPLOAD_KEY_PASSWORD")
+def hasReleaseSigning = [releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword].every { value -> value != null && !value.toString().trim().isEmpty() }
 
 /**
  * The preferred build flavor of JavaScriptCore (JSC)
@@ -88,8 +111,8 @@ android {
         applicationId "com.etkinlink.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode 9
+        versionName "1.0.8"
     }
     signingConfigs {
         debug {
@@ -98,19 +121,62 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        if (hasReleaseSigning) {
+            release {
+                storeFile file(releaseStoreFile)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled enableProguardInReleaseBuilds
+            shrinkResources enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
     }
+}
+
+gradle.taskGraph.whenReady {
+    def requestedRelease = gradle.startParameter.taskNames.any { requestedTask ->
+        def taskName = requestedTask.tokenize(':').last().toLowerCase()
+        taskName.contains("release") || taskName in ["assemble", "build", "bundle"]
+    }
+    if (requestedRelease && !hasReleaseSigning) {
+        throw new GradleException("Release imzalama değişkenleri eksik. Debug anahtarıyla release üretimine izin verilmez.")
+    }
+    if (requestedRelease && !hasGoogleServices) {
+        throw new GradleException("Android push yapılandırması eksik. mobile/google-services.json dosyasını ekleyin veya GOOGLE_SERVICES_JSON file değişkenini tanımlayın.")
+    }
+}
+
+tasks.matching { task -> task.name == "createBundleReleaseJsAndAssets" }.configureEach {
+    dependsOn(
+        "generateReactNativeEntryPoint",
+        "generateAutolinkingPackageList",
+        "generateAutolinkingNewArchitectureFiles",
+        "mergeReleaseShaders",
+        "compileReleaseShaders",
+        "extractReleaseVersionControlInfo"
+    )
+}
+
+// A clean multi-worker release can configure the app CMake project before
+// Reanimated/Worklets publish their Prefab packages. Make the native inputs
+// explicit so clean bundleRelease remains deterministic.
+tasks.matching { task -> task.name.startsWith("configureCMakeRelWithDebInfo") }.configureEach {
+    dependsOn(
+        ":react-native-reanimated:prefabReleasePackage",
+        ":react-native-worklets:prefabReleasePackage"
+    )
 }
 
 dependencies {

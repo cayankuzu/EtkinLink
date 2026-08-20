@@ -1,0 +1,41 @@
+name: Production monitoring yapılandırması
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17,47 * * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  sentry-alerts:
+    runs-on: ubuntu-latest
+    environment: production-monitoring
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Sentry detector ve alarm akışlarını oluştur
+        if: github.event_name == 'workflow_dispatch'
+        run: npm run sentry:configure-alerts
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_ALERT_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+          SENTRY_ALERT_TARGET_TYPE: ${{ vars.SENTRY_ALERT_TARGET_TYPE }}
+          SENTRY_ALERT_TARGET_ID: ${{ secrets.SENTRY_ALERT_TARGET_ID }}
+          SENTRY_API_BASE_URL: ${{ vars.SENTRY_API_BASE_URL }}
+      - name: Production crash-free session eşiğini doğrula
+        run: npm run sentry:check-health
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_ALERT_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+          SENTRY_CRASH_FREE_THRESHOLD: ${{ vars.SENTRY_CRASH_FREE_THRESHOLD }}
+          SENTRY_REQUIRE_HEALTH_DATA: "true"
+          SENTRY_API_BASE_URL: ${{ vars.SENTRY_API_BASE_URL }}

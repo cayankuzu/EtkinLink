@@ -13,6 +13,7 @@ import {
 } from '@shared/components';
 import { contentLimits } from '@shared/constants/limits';
 import { toAppError } from '@shared/lib/errors';
+import { queryKeys } from '@shared/lib/queryKeys';
 import { supabase } from '@shared/lib/supabase';
 import {
   getUsernameValidationError,
@@ -45,11 +46,11 @@ const genders: Array<{ value: ProfileGender; label: string }> = [
 export function EditProfileScreen({ navigation }: Props) {
   const queryClient = useQueryClient();
   const profile = useQuery({
-    queryKey: ['profile', 'current'],
+    queryKey: queryKeys.profile.current,
     queryFn: () => getProfile(),
   });
   const accountEmail = useQuery({
-    queryKey: ['account-email'],
+    queryKey: queryKeys.profile.accountEmail,
     queryFn: async () => {
       const { data, error } = await supabase.auth.getUser();
       if (error || !data.user) throw error ?? new Error('Oturum gerekli.');
@@ -96,7 +97,7 @@ export function EditProfileScreen({ navigation }: Props) {
       if (error) throw error;
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['profile'] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.profile.all });
       navigation.goBack();
     },
   });
@@ -217,7 +218,7 @@ export function EditProfileScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   screen: { padding: spacing.md, gap: spacing.md },
   header: {
-    height: 52,
+    height: 48,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

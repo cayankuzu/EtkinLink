@@ -12,6 +12,7 @@ import {
 import { contentLimits } from '@shared/constants/limits';
 import { premiumComingSoonMessage } from '@shared/constants/premium';
 import { toAppError } from '@shared/lib/errors';
+import { queryKeys } from '@shared/lib/queryKeys';
 import { supabase } from '@shared/lib/supabase';
 import { colors, radius, spacing } from '@shared/theme';
 import type { ProfileGender } from '@shared/types/domain';
@@ -37,11 +38,11 @@ export function MatchFiltersScreen({ route, navigation }: Props) {
   const [ageMin, setAgeMin] = useState('18');
   const [ageMax, setAgeMax] = useState('55');
   const settings = useQuery({
-    queryKey: ['matching-settings', route.params.eventId],
+    queryKey: queryKeys.matching.settings(route.params.eventId),
     queryFn: () => getMatchingSettings(route.params.eventId),
   });
   const preferences = useQuery({
-    queryKey: ['match-preferences'],
+    queryKey: queryKeys.matching.preferences,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('discovery_preferences')
@@ -78,7 +79,9 @@ export function MatchFiltersScreen({ route, navigation }: Props) {
       if (error) throw error;
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['match-preferences'] });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.matching.preferences,
+      });
       navigation.goBack();
     },
   });
@@ -215,7 +218,7 @@ export function MatchFiltersScreen({ route, navigation }: Props) {
 const styles = StyleSheet.create({
   screen: { padding: spacing.md, gap: spacing.md },
   header: {
-    height: 52,
+    height: 48,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

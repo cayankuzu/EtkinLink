@@ -1,0 +1,15 @@
+{
+  "coldStartupP95Ms": 2500,
+  "warmStartupP95Ms": 1000,
+  "firstCachedContentP95Ms": 850,
+  "interactiveP95Ms": 1200,
+  "tapResponseP95Ms": 100,
+  "navigationResponseP95Ms": 300,
+  "feedFpsP50Min": 55,
+  "frameJankPercentMax": 1,
+  "mediaCacheHitRateMin": 0.65,
+  "apiP95Ms": 1200,
+  "apiFailureRateMax": 0.01,
+  "crashFreeSessionRateMin": 0.999,
+  "anrRateMax": 0.002
+}

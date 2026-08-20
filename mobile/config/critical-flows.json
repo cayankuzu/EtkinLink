@@ -1,0 +1,91 @@
+[
+  { "id": "cold-start", "evidence": ["__tests__/App.test.tsx"] },
+  { "id": "sign-in", "evidence": ["src/features/auth/authSchemas.test.ts"] },
+  {
+    "id": "registration",
+    "evidence": [
+      "src/features/auth/registrationDraftStore.test.ts",
+      "src/features/auth/registrationService.test.ts"
+    ]
+  },
+  {
+    "id": "email-pkce",
+    "evidence": [
+      "src/features/auth/authService.test.ts",
+      "src/features/auth/pendingVerificationService.test.ts"
+    ]
+  },
+  {
+    "id": "session-routing",
+    "evidence": ["src/features/auth/sessionStore.test.ts"]
+  },
+  {
+    "id": "event-feed",
+    "evidence": [
+      "src/features/events/eventFilterStore.test.ts",
+      "src/features/events/rssEventService.test.ts",
+      "src/features/events/eventService.test.ts",
+      "src/features/events/useEventDetailController.test.tsx"
+    ]
+  },
+  {
+    "id": "event-images",
+    "evidence": [
+      "src/features/events/EventImage.test.ts",
+      "src/shared/components/AppImage.test.ts"
+    ]
+  },
+  {
+    "id": "room-chat",
+    "evidence": [
+      "src/features/rooms/roomService.test.ts",
+      "src/features/rooms/roomDataService.test.ts",
+      "src/features/rooms/useRoomRealtime.test.ts",
+      "src/app/startup/OutboxSyncController.test.tsx",
+      "src/shared/lib/chatOutbox.test.ts"
+    ]
+  },
+  {
+    "id": "direct-chat",
+    "evidence": [
+      "src/features/messages/messageService.test.ts",
+      "src/features/messages/realtimeChannel.test.ts",
+      "src/shared/lib/chatOutbox.test.ts"
+    ]
+  },
+  {
+    "id": "matching",
+    "evidence": [
+      "src/features/matching/CandidateCard.test.tsx",
+      "src/features/matching/compatibility.test.ts",
+      "src/features/matching/matchingService.test.ts"
+    ]
+  },
+  {
+    "id": "profile",
+    "evidence": ["src/features/profile/profileService.test.ts"]
+  },
+  {
+    "id": "presence",
+    "evidence": [
+      "__tests__/presence.test.ts",
+      "src/features/messages/useConversationPresence.test.ts"
+    ]
+  },
+  {
+    "id": "push-routing",
+    "evidence": [
+      "src/app/navigation/notificationNavigation.test.tsx",
+      "src/shared/lib/pushNotifications.test.ts"
+    ]
+  },
+  {
+    "id": "push-delivery",
+    "evidence": [
+      "../supabase/functions/_shared/workerAuth.test.ts",
+      "../supabase/functions/push-dispatch/index.test.ts",
+      "../supabase/functions/push-receipts/index.test.ts"
+    ]
+  },
+  { "id": "rls-idor", "evidence": ["../supabase/tests/rls_and_security.sql"] }
+]

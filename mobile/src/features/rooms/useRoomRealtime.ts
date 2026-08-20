@@ -10,6 +10,7 @@ type Options = {
 
 const typingIdleMs = 2_500;
 const typingExpiryMs = 3_500;
+const typingRefreshMs = 2_000;
 
 export function useRoomRealtime({
   eventId,
@@ -19,12 +20,14 @@ export function useRoomRealtime({
   const [typingUserIds, setTypingUserIds] = useState<string[]>([]);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const typingRef = useRef(false);
+  const lastTypingBroadcastAt = useRef(0);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const expiryTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
   const broadcastTyping = useCallback(
     async (typing: boolean) => {
       typingRef.current = typing;
+      lastTypingBroadcastAt.current = typing ? Date.now() : 0;
       const channel = channelRef.current;
       if (!channel || !currentUserId) return;
       await channel.send({
@@ -51,7 +54,12 @@ export function useRoomRealtime({
         stopTyping();
         return;
       }
-      void broadcastTyping(true);
+      if (
+        !typingRef.current ||
+        Date.now() - lastTypingBroadcastAt.current >= typingRefreshMs
+      ) {
+        void broadcastTyping(true);
+      }
       idleTimer.current = setTimeout(() => {
         void broadcastTyping(false);
         idleTimer.current = null;

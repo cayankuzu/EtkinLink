@@ -10,6 +10,15 @@
 
 Sunucu verisi TanStack Query ile, oturum ve küçük istemci durumları Zustand ile yönetilir. Navigasyon tip güvenlidir. Büyük listeler FlashList ve cursor pagination kullanır. Bileşenler doğrudan başka feature'ın ekranına bağımlı değildir; bağımlılık kuralları `dependency-cruiser` ile CI'da denetlenir.
 
+Sorgu anahtarları domain bazlı `queryKeys` fabrikalarında tutulur. Kritik query function'ları React Query `AbortSignal` değerini Supabase builder'a iletir; ortak fetch katmanı 15 saniye timeout, ekran iptali ve en çok iki jitter'lı retry uygular.
+
+Büyük akışlar dosya sayısı için değil sorumluluk sınırları için ayrılır:
+
+- Event detail sorgu/mutation/cache/modal/navigasyon durumu `useEventDetailController` içindedir; ekran view kompozisyonudur ve kaynak detayları saf section bileşenidir.
+- Room detail, Realtime/typing yaşam döngüsünü `useRoomRealtime`; mesaj sunumunu `RoomMessageBubble`; besteci alanını ortak `ChatComposer` üzerinden kullanır.
+- Direct chat, presence/typing'i `useConversationPresence`; balon ve composer sunumunu ayrı bileşenlerde tutar.
+- Match cards gesture/Reanimated sorumluluğunu `useMatchCardGesture`; kart ve quota sunumunu saf bileşenlerde tutar.
+
 ## Backend
 
 Supabase Auth, PostgreSQL, Storage, Realtime ve Edge Functions kullanılır. Kritik mutasyonlar istemciden tabloya doğrudan yazmak yerine `security definer` RPC'lerinde atomik olarak yürür:

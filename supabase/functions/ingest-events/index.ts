@@ -133,22 +133,21 @@ function mapEvent(value: unknown): EventRow | null {
     summary: description?.slice(0, 500) ?? null,
     description,
     start_at: startAt,
-    end_at:
-      endAt && new Date(endAt).getTime() >= new Date(startAt).getTime()
-        ? endAt
-        : null,
-    venue:
-      entityName(venueData) ?? (venueType === "ONLINE" ? "Çevrim içi" : null),
+    end_at: endAt && new Date(endAt).getTime() >= new Date(startAt).getTime()
+      ? endAt
+      : null,
+    venue: entityName(venueData) ??
+      (venueType === "ONLINE" ? "Çevrim içi" : null),
     city: registeredVenue
       ? entityName(record(venueData?.city))
       : manualVenue
-        ? text(venueData?.city_name) || null
-        : null,
+      ? text(venueData?.city_name) || null
+      : null,
     district: registeredVenue
       ? entityName(record(venueData?.district))
       : manualVenue
-        ? text(venueData?.district_name) || null
-        : null,
+      ? text(venueData?.district_name) || null
+      : null,
     address: text(venueData?.address) || null,
     image_url: imageUrl,
     categories: [...new Set(categories)],
@@ -198,7 +197,7 @@ async function fetchPage(skip: number): Promise<{
   }
 }
 
-Deno.serve(async request => {
+Deno.serve(async (request) => {
   if (request.method !== "POST") {
     return jsonResponse(405, { error: "Yalnızca POST desteklenir." });
   }
@@ -231,7 +230,9 @@ Deno.serve(async request => {
       rawItems.push(...page.items);
       if (page.items.length < PAGE_SIZE) break;
     }
-    const rows = rawItems.map(mapEvent).filter((row): row is EventRow => Boolean(row));
+    const rows = rawItems.map(mapEvent).filter((row): row is EventRow =>
+      Boolean(row)
+    );
     if (rows.length === 0) {
       return jsonResponse(502, { error: "API geçerli etkinlik döndürmedi." });
     }
@@ -258,7 +259,9 @@ Deno.serve(async request => {
       completed_at: new Date().toISOString(),
     });
   } catch (error) {
-    const code = error instanceof Error ? error.message.slice(0, 80) : "UNKNOWN";
+    const code = error instanceof Error
+      ? error.message.slice(0, 80)
+      : "UNKNOWN";
     return jsonResponse(502, {
       error: "Etkinlik API içe aktarması başarısız.",
       code,

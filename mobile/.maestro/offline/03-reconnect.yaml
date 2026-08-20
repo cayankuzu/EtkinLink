@@ -1,0 +1,7 @@
+appId: com.etkinlink.app
+name: Bağlantı dönüşünde outbox flush
+---
+- extendedWaitUntil:
+    notVisible: Mesaj gönderilemedi. Yeniden denemek için dokun.
+    timeout: 30000
+- assertVisible: ${E2E_OFFLINE_MESSAGE}

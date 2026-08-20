@@ -238,7 +238,7 @@ export function SignUpProfileScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   fieldGroup: { gap: spacing.xs },
   dateButton: {
-    minHeight: 54,
+    minHeight: 48,
     borderWidth: 1,
     borderColor: colors.borderStrong,
     backgroundColor: colors.surface,

@@ -1,6 +1,7 @@
 import { paginationLimits } from '@shared/constants/limits';
 import { premiumFeaturesAvailable } from '@shared/constants/premium';
 import { createClientId } from '@shared/lib/ids';
+import { applyAbortSignal } from '@shared/lib/network';
 import { getSignedProfilePhotoUrls } from '@shared/lib/profilePhotoUrls';
 import { supabase } from '@shared/lib/supabase';
 import type {
@@ -91,7 +92,10 @@ function parseSwipeQuota(value: unknown): SwipeQuota {
   };
 }
 
-async function enrichCandidates(rows: CandidateRow[]): Promise<Candidate[]> {
+async function enrichCandidates(
+  rows: CandidateRow[],
+  signal?: AbortSignal,
+): Promise<Candidate[]> {
   const ids = rows.map(row => row.id);
   if (ids.length === 0) return [];
   const [
@@ -99,15 +103,24 @@ async function enrichCandidates(rows: CandidateRow[]): Promise<Candidate[]> {
     { data: interestRows, error: userInterestError },
     { data: compatibilityRows, error: compatibilityError },
   ] = await Promise.all([
-    supabase
-      .from('profile_photos')
-      .select('*')
-      .in('user_id', ids)
-      .order('position'),
-    supabase.from('user_interests').select('*').in('user_id', ids),
-    supabase.rpc('get_candidate_compatibilities', {
-      target_user_ids: ids,
-    }),
+    applyAbortSignal(
+      supabase
+        .from('profile_photos')
+        .select('*')
+        .in('user_id', ids)
+        .order('position'),
+      signal,
+    ),
+    applyAbortSignal(
+      supabase.from('user_interests').select('*').in('user_id', ids),
+      signal,
+    ),
+    applyAbortSignal(
+      supabase.rpc('get_candidate_compatibilities', {
+        target_user_ids: ids,
+      }),
+      signal,
+    ),
   ]);
   if (photoError) throw photoError;
   if (userInterestError) throw userInterestError;
@@ -120,10 +133,13 @@ async function enrichCandidates(rows: CandidateRow[]): Promise<Candidate[]> {
   );
   const { data: interests, error: interestError } =
     interestIds.length > 0
-      ? await supabase
-          .from('interests')
-          .select('id,slug,label,sort_order')
-          .in('id', interestIds)
+      ? await applyAbortSignal(
+          supabase
+            .from('interests')
+            .select('id,slug,label,sort_order')
+            .in('id', interestIds),
+          signal,
+        )
       : { data: [], error: null };
   if (interestError) throw interestError;
   const interestMap = new Map(
@@ -198,19 +214,23 @@ export async function getMatchContext(
 export async function listCandidates(
   eventId: string,
   cursor: CandidateCursor | null = null,
+  signal?: AbortSignal,
 ): Promise<{
   items: Candidate[];
   nextCursor: CandidateCursor | null;
 }> {
-  const { data, error } = await supabase.rpc('get_event_candidates', {
-    target_event_id: eventId,
-    page_size: paginationLimits.candidates,
-    after_incoming: cursor?.incomingLike ?? null,
-    after_joined_at: cursor?.joinedAt ?? null,
-    after_user_id: cursor?.userId ?? null,
-  });
+  const { data, error } = await applyAbortSignal(
+    supabase.rpc('get_event_candidates', {
+      target_event_id: eventId,
+      page_size: paginationLimits.candidates,
+      after_incoming: cursor?.incomingLike ?? null,
+      after_joined_at: cursor?.joinedAt ?? null,
+      after_user_id: cursor?.userId ?? null,
+    }),
+    signal,
+  );
   if (error) throw error;
-  const items = await enrichCandidates(data);
+  const items = await enrichCandidates(data, signal);
   const last = data.at(-1);
   return {
     items,
@@ -271,18 +291,24 @@ export async function swipeCandidate(
   };
 }
 
-export async function getSwipeQuota(): Promise<SwipeQuota> {
-  const { data, error } = await supabase.rpc('get_swipe_quota', {});
+export async function getSwipeQuota(signal?: AbortSignal): Promise<SwipeQuota> {
+  const { data, error } = await applyAbortSignal(
+    supabase.rpc('get_swipe_quota', {}),
+    signal,
+  );
   if (error) throw error;
   return parseSwipeQuota(data);
 }
 
-export async function getMatchingLikeCounts(): Promise<{
+export async function getMatchingLikeCounts(signal?: AbortSignal): Promise<{
   outgoingCount: number;
   incomingCount: number;
   incomingLocked: boolean;
 }> {
-  const { data, error } = await supabase.rpc('get_matching_like_counts', {});
+  const { data, error } = await applyAbortSignal(
+    supabase.rpc('get_matching_like_counts', {}),
+    signal,
+  );
   if (error) throw error;
   const result = isRecord(data) ? data : {};
   return {
@@ -295,18 +321,22 @@ export async function getMatchingLikeCounts(): Promise<{
 async function listLikeCandidates(
   rpcName: 'get_outgoing_event_likes' | 'get_incoming_event_likes',
   cursor: { likedAt: string; userId: string } | null = null,
+  signal?: AbortSignal,
 ): Promise<{
   items: LikedCandidate[];
   nextCursor: { likedAt: string; userId: string } | null;
 }> {
-  const { data, error } = await supabase.rpc(rpcName, {
-    page_size: paginationLimits.candidates,
-    after_liked_at: cursor?.likedAt ?? null,
-    after_user_id: cursor?.userId ?? null,
-  });
+  const { data, error } = await applyAbortSignal(
+    supabase.rpc(rpcName, {
+      page_size: paginationLimits.candidates,
+      after_liked_at: cursor?.likedAt ?? null,
+      after_user_id: cursor?.userId ?? null,
+    }),
+    signal,
+  );
   if (error) throw error;
   const rows = data as LikedCandidateRow[];
-  const candidates = await enrichCandidates(rows);
+  const candidates = await enrichCandidates(rows, signal);
   const candidateMap = new Map(
     candidates.map(candidate => [candidate.id, candidate]),
   );
@@ -336,14 +366,16 @@ async function listLikeCandidates(
 
 export async function listLikedCandidates(
   cursor: { likedAt: string; userId: string } | null = null,
+  signal?: AbortSignal,
 ) {
-  return listLikeCandidates('get_outgoing_event_likes', cursor);
+  return listLikeCandidates('get_outgoing_event_likes', cursor, signal);
 }
 
 export async function listIncomingLikedCandidates(
   cursor: { likedAt: string; userId: string } | null = null,
+  signal?: AbortSignal,
 ) {
-  return listLikeCandidates('get_incoming_event_likes', cursor);
+  return listLikeCandidates('get_incoming_event_likes', cursor, signal);
 }
 
 export async function changeLikeToPass(

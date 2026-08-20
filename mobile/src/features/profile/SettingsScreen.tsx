@@ -11,12 +11,15 @@ import {
 } from '@shared/components';
 import { contentLimits } from '@shared/constants/limits';
 import { toAppError } from '@shared/lib/errors';
+import { enablePushNotifications } from '@shared/lib/pushNotifications';
+import { queryKeys } from '@shared/lib/queryKeys';
 import { supabase } from '@shared/lib/supabase';
-import { colors, radius, spacing } from '@shared/theme';
+import { colors, layout, radius, spacing } from '@shared/theme';
 import type { Profile } from '@shared/types/domain';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
+  BellRing,
   ChevronRight,
   Eye,
   FileText,
@@ -46,35 +49,45 @@ type Props = NativeStackScreenProps<ProfileStackParamList, 'Settings'>;
 export function SettingsScreen({ navigation }: Props) {
   const queryClient = useQueryClient();
   const signOut = useSessionStore(state => state.signOut);
+  const userId = useSessionStore(state => state.session?.user.id ?? null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [confirmation, setConfirmation] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notificationBusy, setNotificationBusy] = useState(false);
   const profile = useQuery({
-    queryKey: ['settings-profile'],
+    queryKey: queryKeys.profile.settings,
     queryFn: () => getProfile(),
     staleTime: 30_000,
   });
   const matchingMode = useMutation({
     mutationFn: (enabled: boolean) => setMatchingEnabled(enabled),
     onMutate: enabled => {
-      const previous = queryClient.getQueryData<Profile>(['settings-profile']);
-      queryClient.setQueryData<Profile>(['settings-profile'], current =>
+      const previous = queryClient.getQueryData<Profile>(
+        queryKeys.profile.settings,
+      );
+      queryClient.setQueryData<Profile>(queryKeys.profile.settings, current =>
         current ? { ...current, matchingEnabled: enabled } : current,
       );
       return { previous };
     },
     onError: (_error, _enabled, context) => {
       if (context?.previous) {
-        queryClient.setQueryData(['settings-profile'], context.previous);
+        queryClient.setQueryData(queryKeys.profile.settings, context.previous);
       }
     },
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: ['settings-profile'] });
-      void queryClient.invalidateQueries({ queryKey: ['profile'] });
-      void queryClient.invalidateQueries({ queryKey: ['matching-settings'] });
-      void queryClient.invalidateQueries({ queryKey: ['candidates'] });
-      void queryClient.invalidateQueries({ queryKey: ['rooms'] });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.profile.settings,
+      });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.profile.all });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.matching.settings(),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.matching.candidates(),
+      });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.rooms.all });
     },
   });
 
@@ -91,6 +104,27 @@ export function SettingsScreen({ navigation }: Props) {
         },
       ],
     );
+  }
+
+  async function enableNotifications() {
+    if (!userId || notificationBusy) return;
+    setNotificationBusy(true);
+    try {
+      const enabled = await enablePushNotifications(userId);
+      Alert.alert(
+        enabled ? 'Bildirimler açıldı' : 'Bildirim izni verilmedi',
+        enabled
+          ? 'Mesaj, eşleşme ve etkinlik hatırlatmalarını bu cihazda alacaksın.'
+          : 'İzni daha sonra cihaz ayarlarından açabilirsin.',
+      );
+    } catch (notificationError) {
+      Alert.alert(
+        'Bildirimler açılamadı',
+        toAppError(notificationError).message,
+      );
+    } finally {
+      setNotificationBusy(false);
+    }
   }
 
   async function deleteAccount() {
@@ -184,6 +218,11 @@ export function SettingsScreen({ navigation }: Props) {
 
       <SettingsGroup title="GÜVENLİK VE DESTEK">
         <SettingRow
+          icon={BellRing}
+          title={notificationBusy ? 'Bildirimler açılıyor…' : 'Bildirimleri Aç'}
+          onPress={() => void enableNotifications()}
+        />
+        <SettingRow
           icon={LockKeyhole}
           title="Engellenen Kullanıcılar"
           onPress={() => navigation.navigate('BlockedUsers')}
@@ -219,7 +258,7 @@ export function SettingsScreen({ navigation }: Props) {
         onRequestClose={() => setDeleteOpen(false)}
       >
         <View style={styles.backdrop}>
-          <View style={styles.modal}>
+          <View style={styles.modal} accessibilityViewIsModal>
             <AppText variant="heading20">Hesabı kalıcı olarak sil</AppText>
             <AppText variant="body14" tone="secondary">
               Profilin, fotoğrafların, mesajların, eşleşmelerin ve etkinlik
@@ -358,7 +397,7 @@ function SettingToggleRow({
 const styles = StyleSheet.create({
   screen: { padding: spacing.md, gap: spacing.md },
   header: {
-    height: 52,
+    height: 48,
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -374,7 +413,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   row: {
-    minHeight: 56,
+    minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
@@ -383,7 +422,7 @@ const styles = StyleSheet.create({
   rowBorder: { borderBottomWidth: 1, borderBottomColor: colors.border },
   rowTitle: { flex: 1 },
   toggleRow: {
-    minHeight: 76,
+    minHeight: 60,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
@@ -398,6 +437,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.overlay,
   },
   modal: {
+    width: '100%',
+    maxWidth: layout.maxModalWidth,
+    maxHeight: '92%',
+    alignSelf: 'center',
     backgroundColor: colors.surface,
     borderTopLeftRadius: radius.xxl,
     borderTopRightRadius: radius.xxl,

@@ -14,13 +14,6 @@ export type AuthStackParamList = {
   NewPassword: undefined;
 };
 
-export type OnboardingStackParamList = {
-  ProfileBasics: undefined;
-  Interests: undefined;
-  Photos: undefined;
-  Complete: undefined;
-};
-
 export type DiscoverStackParamList = {
   Discover: undefined;
   CityPicker: undefined;
@@ -42,7 +35,7 @@ export type RoomsStackParamList = {
 };
 
 export type MatchesStackParamList = {
-  Matches: undefined;
+  Matches: { section?: 'outgoing' | 'incoming' } | undefined;
 };
 
 export type MessagesStackParamList = {

@@ -1,8 +1,7 @@
+import { AppImage } from '@shared/components';
 import { colors } from '@shared/theme';
 import { CalendarDays } from 'lucide-react-native';
-import { useEffect, useMemo, useState } from 'react';
 import {
-  Image,
   type ImageStyle,
   type StyleProp,
   StyleSheet,
@@ -18,14 +17,12 @@ type Props = {
 };
 
 export function compatibleEventImageUrl(imageUrl: string): string {
-  if (!/\.avif(?:\?|$)/i.test(imageUrl)) return imageUrl;
-  const params = new URLSearchParams({
-    url: imageUrl,
-    output: 'webp',
-    w: '1200',
-    q: '84',
-  });
-  return `https://wsrv.nl/?${params.toString()}`;
+  try {
+    const parsed = new URL(imageUrl);
+    return parsed.protocol === 'https:' ? imageUrl : '';
+  } catch {
+    return '';
+  }
 }
 
 export function EventImage({
@@ -34,36 +31,20 @@ export function EventImage({
   placeholderStyle,
   iconSize = 38,
 }: Props) {
-  const [failed, setFailed] = useState(false);
-  const uri = useMemo(
-    () => (imageUrl ? compatibleEventImageUrl(imageUrl) : null),
-    [imageUrl],
+  const uri = imageUrl ? compatibleEventImageUrl(imageUrl) : null;
+  const fallback = (
+    <View
+      style={[
+        styles.placeholder,
+        style as StyleProp<ViewStyle>,
+        placeholderStyle,
+      ]}
+    >
+      <CalendarDays size={iconSize} color={colors.textTertiary} />
+    </View>
   );
 
-  useEffect(() => setFailed(false), [uri]);
-
-  if (!uri || failed) {
-    return (
-      <View
-        style={[
-          styles.placeholder,
-          style as StyleProp<ViewStyle>,
-          placeholderStyle,
-        ]}
-      >
-        <CalendarDays size={iconSize} color={colors.textTertiary} />
-      </View>
-    );
-  }
-
-  return (
-    <Image
-      source={{ uri }}
-      style={style}
-      resizeMode="cover"
-      onError={() => setFailed(true)}
-    />
-  );
+  return <AppImage uri={uri} style={style} fallback={fallback} />;
 }
 
 const styles = StyleSheet.create({

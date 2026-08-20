@@ -1,0 +1,70 @@
+name: Staging ölçek testi
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: "Hedef <10K için staging-load, 10K için staging-10k yaz"
+        required: true
+      target_vus:
+        description: "Düşük ve orta kapıdan sonra çalışacak hedef VU (en çok 10000)"
+        required: true
+        default: "1000"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-load-test
+  cancel-in-progress: false
+
+jobs:
+  staged-load-test:
+    if: >-
+      (fromJSON(inputs.target_vus) < 10000 && inputs.confirmation == 'staging-load') ||
+      (fromJSON(inputs.target_vus) == 10000 && inputs.confirmation == 'staging-10k')
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: staging-load-test
+    env:
+      TARGET_ENV: staging
+      SUPABASE_URL: ${{ secrets.STAGING_SUPABASE_URL }}
+      SUPABASE_PUBLISHABLE_KEY: ${{ secrets.STAGING_SUPABASE_PUBLISHABLE_KEY }}
+      LOAD_TEST_JWTS: ${{ secrets.STAGING_LOAD_TEST_JWTS }}
+      WRITE_TEST_JWT: ${{ secrets.STAGING_WRITE_TEST_JWT }}
+      WRITE_TEST_MATCH_ID: ${{ secrets.STAGING_WRITE_TEST_MATCH_ID }}
+      WRITE_TEST_ROOM_EVENT_ID: ${{ secrets.STAGING_WRITE_TEST_ROOM_EVENT_ID }}
+      MATCH_TEST_EVENT_ID: ${{ secrets.STAGING_MATCH_TEST_EVENT_ID }}
+      MATCH_TEST_USER_ID: ${{ secrets.STAGING_MATCH_TEST_USER_ID }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: grafana/setup-k6-action@db07bd9765aac508ef18982e52ab937fe633a065 # v1.2.1
+      - name: Düşük ölçek güven kapısı
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          TARGET_VUS=25 TEST_DURATION=3m k6 run load-tests/staging-mixed.k6.js
+          mv artifacts/staging-mixed-load-summary.json artifacts/load-low-25vu.json
+      - name: Orta ölçek güven kapısı
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGET_VUS=250 TEST_DURATION=5m k6 run load-tests/staging-mixed.k6.js
+          mv artifacts/staging-mixed-load-summary.json artifacts/load-medium-250vu.json
+      - name: Hedef ölçek
+        shell: bash
+        env:
+          TARGET_VUS: ${{ inputs.target_vus }}
+          TEST_DURATION: 15m
+        run: |
+          set -euo pipefail
+          k6 run load-tests/staging-mixed.k6.js
+          mv artifacts/staging-mixed-load-summary.json "artifacts/load-target-${TARGET_VUS}vu.json"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: staging-mixed-load-evidence-${{ inputs.target_vus }}vu
+          path: artifacts/*.json
+          if-no-files-found: error
+          retention-days: 30

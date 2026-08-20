@@ -9,6 +9,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   AppButton,
+  AppImage,
   AppText,
   ErrorState,
   IconButton,
@@ -17,6 +18,7 @@ import {
   StateView,
 } from '@shared/components';
 import { toAppError } from '@shared/lib/errors';
+import { queryKeys } from '@shared/lib/queryKeys';
 import { colors, radius, shadows, spacing } from '@shared/theme';
 import type { Candidate } from '@shared/types/domain';
 import {
@@ -43,18 +45,14 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, {
-  interpolate,
-  useAnimatedStyle,
-  useReducedMotion,
-  useSharedValue,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
-import { scheduleOnRN } from 'react-native-worklets';
+import { GestureDetector } from 'react-native-gesture-handler';
+import Animated, { useReducedMotion } from 'react-native-reanimated';
 
 import { CandidateCard } from './CandidateCard';
+import {
+  restorePendingLikes,
+  suppressCandidateFromPendingLikes,
+} from './matchingQueryCache';
 import type { CandidateCursor } from './matchingService';
 import {
   getSwipeQuota,
@@ -63,12 +61,9 @@ import {
   swipeCandidate,
 } from './matchingService';
 import { SwipeQuotaBar } from './SwipeQuotaBar';
+import { type SwipeAction, useMatchCardGesture } from './useMatchCardGesture';
 
 type Props = NativeStackScreenProps<RoomsStackParamList, 'MatchCards'>;
-type SwipeAction = 'like' | 'pass';
-
-const swipeThreshold = 110;
-
 export function MatchCardsScreen({ route, navigation }: Props) {
   const queryClient = useQueryClient();
   const { width } = useWindowDimensions();
@@ -80,22 +75,26 @@ export function MatchCardsScreen({ route, navigation }: Props) {
   } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const swipePending = useRef(false);
-  const translateX = useSharedValue(0);
-  const translateY = useSharedValue(0);
+  const finishSwipeRef = useRef<(kind: SwipeAction) => void>(() => undefined);
+  const dispatchSwipe = useCallback(
+    (kind: SwipeAction) => finishSwipeRef.current(kind),
+    [],
+  );
   const event = useQuery({
-    queryKey: ['event', route.params.eventId],
-    queryFn: () => getEvent(route.params.eventId),
+    queryKey: queryKeys.events.detail(route.params.eventId),
+    queryFn: ({ signal }) => getEvent(route.params.eventId, signal),
   });
   const candidates = useInfiniteQuery({
-    queryKey: ['candidates', route.params.eventId],
-    queryFn: ({ pageParam }) => listCandidates(route.params.eventId, pageParam),
+    queryKey: queryKeys.matching.candidates(route.params.eventId),
+    queryFn: ({ pageParam, signal }) =>
+      listCandidates(route.params.eventId, pageParam, signal),
     initialPageParam: null as CandidateCursor | null,
     getNextPageParam: page => page.nextCursor,
   });
   const { fetchNextPage, hasNextPage, isFetchingNextPage } = candidates;
   const quota = useQuery({
-    queryKey: ['swipe-quota'],
-    queryFn: getSwipeQuota,
+    queryKey: queryKeys.matching.swipeQuota,
+    queryFn: ({ signal }) => getSwipeQuota(signal),
     staleTime: 30_000,
     refetchInterval: 30_000,
   });
@@ -105,23 +104,29 @@ export function MatchCardsScreen({ route, navigation }: Props) {
   );
   const current = items[index];
   const next = items[index + 1];
+  const { animateSwipe, cardStyle, likeStyle, pan, passStyle, resetGesture } =
+    useMatchCardGesture({
+      width,
+      reduceMotion,
+      disabled: !current || swipePending.current,
+      onSwipe: dispatchSwipe,
+    });
 
   const refreshDeck = useCallback(async () => {
     setIndex(0);
     setActionError(null);
-    translateX.value = 0;
-    translateY.value = 0;
+    resetGesture();
     await Promise.all([
       queryClient.resetQueries({
-        queryKey: ['candidates', route.params.eventId],
+        queryKey: queryKeys.matching.candidates(route.params.eventId),
         exact: true,
       }),
       queryClient.invalidateQueries({
-        queryKey: ['swipe-quota'],
+        queryKey: queryKeys.matching.swipeQuota,
         exact: true,
       }),
     ]);
-  }, [queryClient, route.params.eventId, translateX, translateY]);
+  }, [queryClient, resetGesture, route.params.eventId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -162,11 +167,15 @@ export function MatchCardsScreen({ route, navigation }: Props) {
       kind: SwipeAction;
     }) => swipeCandidate(route.params.eventId, candidate.id, kind),
     onMutate: variables => {
+      const pendingLikes = suppressCandidateFromPendingLikes(
+        queryClient,
+        variables.candidate.id,
+      );
       const previousQuota = queryClient.getQueryData<
         Awaited<ReturnType<typeof getSwipeQuota>>
-      >(['swipe-quota']);
+      >(queryKeys.matching.swipeQuota);
       if (previousQuota) {
-        queryClient.setQueryData(['swipe-quota'], {
+        queryClient.setQueryData(queryKeys.matching.swipeQuota, {
           ...previousQuota,
           usedLikes:
             previousQuota.usedLikes + (variables.kind === 'like' ? 1 : 0),
@@ -178,21 +187,24 @@ export function MatchCardsScreen({ route, navigation }: Props) {
             previousQuota.remainingPasses - (variables.kind === 'pass' ? 1 : 0),
         });
       }
-      return { previousQuota };
+      return { pendingLikes, previousQuota };
     },
     onSuccess: (result, variables) => {
       swipePending.current = false;
-      queryClient.setQueryData(['swipe-quota'], result.quota);
+      queryClient.setQueryData(queryKeys.matching.swipeQuota, result.quota);
       void queryClient.invalidateQueries({
-        queryKey: ['matching-like-counts'],
+        queryKey: queryKeys.matching.likeCounts,
       });
-      void queryClient.invalidateQueries({ queryKey: ['liked-candidates'] });
-      if (variables.kind === 'like') {
-        void queryClient.invalidateQueries({
-          queryKey: ['candidates'],
-          refetchType: 'inactive',
-        });
-      }
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.matching.liked,
+      });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.matching.incomingLiked,
+      });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.matching.candidates(),
+        refetchType: 'inactive',
+      });
       if (result.matched && result.matchId) {
         setMatch({ candidate: variables.candidate, matchId: result.matchId });
       }
@@ -200,7 +212,12 @@ export function MatchCardsScreen({ route, navigation }: Props) {
     onError: (error, _variables, context) => {
       swipePending.current = false;
       if (context?.previousQuota)
-        queryClient.setQueryData(['swipe-quota'], context.previousQuota);
+        queryClient.setQueryData(
+          queryKeys.matching.swipeQuota,
+          context.previousQuota,
+        );
+      if (context?.pendingLikes)
+        restorePendingLikes(queryClient, context.pendingLikes);
       setIndex(value => Math.max(value - 1, 0));
       setActionError(toAppError(error).message);
     },
@@ -225,86 +242,14 @@ export function MatchCardsScreen({ route, navigation }: Props) {
       setActionError(null);
       action.mutate({ candidate: current, kind });
       setIndex(value => value + 1);
-      translateX.value = 0;
-      translateY.value = 0;
+      resetGesture();
     },
-    [action, current, quota.data, translateX, translateY],
+    [action, current, quota.data, resetGesture],
   );
 
-  const animateSwipe = useCallback(
-    (kind: SwipeAction) => {
-      if (!current || action.isPending) return;
-      if (reduceMotion) {
-        finishSwipe(kind);
-        return;
-      }
-      translateX.value = withTiming(
-        kind === 'like' ? width * 1.25 : -width * 1.25,
-        { duration: 220 },
-        finished => {
-          if (finished) scheduleOnRN(finishSwipe, kind);
-        },
-      );
-    },
-    [action.isPending, current, finishSwipe, reduceMotion, translateX, width],
-  );
-
-  const pan = Gesture.Pan()
-    .activeOffsetX([-24, 24])
-    .failOffsetY([-22, 22])
-    .onUpdate(eventValue => {
-      translateX.value = eventValue.translationX;
-      translateY.value = eventValue.translationY * 0.18;
-    })
-    .onEnd(eventValue => {
-      if (Math.abs(eventValue.translationX) >= swipeThreshold) {
-        const kind: SwipeAction = eventValue.translationX > 0 ? 'like' : 'pass';
-        if (reduceMotion) {
-          scheduleOnRN(finishSwipe, kind);
-          return;
-        }
-        translateX.value = withTiming(
-          kind === 'like' ? width * 1.25 : -width * 1.25,
-          { duration: 200 },
-          finished => {
-            if (finished) scheduleOnRN(finishSwipe, kind);
-          },
-        );
-        return;
-      }
-      translateX.value = withSpring(0, { damping: 18, stiffness: 190 });
-      translateY.value = withSpring(0, { damping: 18, stiffness: 190 });
-    });
-
-  const cardStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: translateX.value },
-      { translateY: translateY.value },
-      {
-        rotate: `${interpolate(
-          translateX.value,
-          [-width, 0, width],
-          reduceMotion ? [0, 0, 0] : [-9, 0, 9],
-        )}deg`,
-      },
-    ],
-  }));
-  const likeStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(
-      translateX.value,
-      [20, swipeThreshold],
-      [0, 1],
-      'clamp',
-    ),
-  }));
-  const passStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(
-      translateX.value,
-      [-swipeThreshold, -20],
-      [1, 0],
-      'clamp',
-    ),
-  }));
+  useEffect(() => {
+    finishSwipeRef.current = finishSwipe;
+  }, [finishSwipe]);
 
   if (candidates.isLoading || event.isLoading || quota.isLoading) {
     return (
@@ -434,8 +379,8 @@ export function MatchCardsScreen({ route, navigation }: Props) {
             <View style={styles.matchVisual}>
               <View style={styles.avatarHalo}>
                 {match?.candidate.photos[0]?.url ? (
-                  <Image
-                    source={{ uri: match.candidate.photos[0].url }}
+                  <AppImage
+                    uri={match.candidate.photos[0].url}
                     style={styles.matchAvatar}
                     accessibilityLabel={`${match.candidate.fullName} profil fotoğrafı`}
                   />
@@ -515,7 +460,7 @@ export function MatchCardsScreen({ route, navigation }: Props) {
 const styles = StyleSheet.create({
   screen: { padding: spacing.md, gap: spacing.sm },
   header: {
-    height: 52,
+    height: 48,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,

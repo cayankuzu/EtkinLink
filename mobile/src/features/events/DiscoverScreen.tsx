@@ -7,12 +7,16 @@ import {
   AppText,
   ErrorState,
   IconButton,
+  mainTabSafeAreaEdges,
+  prefetchAppImages,
   RefreshableContent,
+  Screen,
   Skeleton,
   StateView,
 } from '@shared/components';
 import { toAppError } from '@shared/lib/errors';
-import { colors, spacing } from '@shared/theme';
+import { queryKeys } from '@shared/lib/queryKeys';
+import { colors, layout, spacing } from '@shared/theme';
 import type { Event } from '@shared/types/domain';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import {
@@ -67,7 +71,7 @@ export function DiscoverScreen({ navigation }: Props) {
   const resetFilters = useEventFilterStore(state => state.resetFilters);
   const userId = session?.user.id ?? null;
   const profile = useQuery({
-    queryKey: ['profile', 'current'],
+    queryKey: queryKeys.profile.current,
     queryFn: () => getProfile(),
     enabled: Boolean(userId && !sessionProfile?.city),
   });
@@ -85,19 +89,19 @@ export function DiscoverScreen({ navigation }: Props) {
   const feedEnabled = !userId || initializedUserId === userId;
   const viewerId = userId ?? 'guest';
   const snapshot = useQuery({
-    queryKey: ['events-snapshot', viewerId, filterKey],
+    queryKey: queryKeys.events.snapshotFor(viewerId, filterKey),
     queryFn: () => loadEventFeedSnapshot(viewerId, filterKey),
     enabled: feedEnabled,
     staleTime: Infinity,
   });
   const preview = useQuery({
-    queryKey: ['events-preview', filterKey],
+    queryKey: queryKeys.events.previewFor(filterKey),
     queryFn: () => searchEventPreview(filterKey),
     enabled: feedEnabled,
     staleTime: 5 * 60 * 1000,
   });
   const events = useInfiniteQuery({
-    queryKey: ['events', filterKey],
+    queryKey: queryKeys.events.feed(filterKey),
     queryFn: ({ pageParam }) => searchEvents(filterKey, pageParam),
     initialPageParam: null as import('./eventTypes').EventCursor | null,
     getNextPageParam: page => page.nextCursor,
@@ -128,13 +132,17 @@ export function DiscoverScreen({ navigation }: Props) {
     if (!feedEnabled || items.length === 0) return;
     void saveEventFeedSnapshot(viewerId, filterKey, items);
   }, [feedEnabled, filterKey, items, viewerId]);
+
+  useEffect(() => {
+    void prefetchAppImages(items.slice(0, 4).map(event => event.imageUrl));
+  }, [items]);
   const saveMutation = useMutation({
     mutationFn: ({ event, saved }: { event: Event; saved: boolean }) =>
       setEventSaved(event, saved),
     onMutate: async variables => {
-      await queryClient.cancelQueries({ queryKey: ['events'] });
+      await queryClient.cancelQueries({ queryKey: queryKeys.events.all });
       queryClient.setQueriesData(
-        { queryKey: ['events'] },
+        { queryKey: queryKeys.events.all },
         (old: typeof events.data) =>
           old
             ? {
@@ -151,7 +159,7 @@ export function DiscoverScreen({ navigation }: Props) {
             : old,
       );
       queryClient.setQueriesData<EventPage>(
-        { queryKey: ['events-preview'] },
+        { queryKey: queryKeys.events.preview },
         old =>
           old
             ? {
@@ -169,7 +177,7 @@ export function DiscoverScreen({ navigation }: Props) {
       Alert.alert('Etkinlik kaydedilemedi', toAppError(error).message),
     onSettled: () =>
       queryClient.invalidateQueries({
-        queryKey: ['events'],
+        queryKey: queryKeys.events.all,
         refetchType: 'none',
       }),
   });
@@ -220,7 +228,11 @@ export function DiscoverScreen({ navigation }: Props) {
     snapshot.isFetched;
 
   return (
-    <View style={styles.screen}>
+    <Screen
+      contentStyle={styles.screen}
+      safeAreaEdges={mainTabSafeAreaEdges}
+      testID="discover-screen"
+    >
       <ConnectivityBanner />
       <View style={styles.header}>
         <View style={styles.brand}>
@@ -327,7 +339,7 @@ export function DiscoverScreen({ navigation }: Props) {
           }
         />
       )}
-    </View>
+    </Screen>
   );
 }
 
@@ -343,7 +355,7 @@ function DiscoverSkeleton() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.canvas },
   header: {
-    minHeight: 64,
+    minHeight: layout.headerHeight,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -354,9 +366,9 @@ const styles = StyleSheet.create({
   },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   brand: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  brandIcon: { width: 38, height: 38 },
+  brandIcon: { width: 30, height: 30 },
   sectionHeader: {
-    minHeight: 76,
+    minHeight: 60,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -365,11 +377,11 @@ const styles = StyleSheet.create({
   },
   sectionTitle: { flex: 1, gap: 2 },
   listContent: { paddingBottom: spacing.xl },
-  cardWrap: { paddingHorizontal: spacing.md, paddingBottom: spacing.md },
+  cardWrap: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
   skeletonWrap: { paddingHorizontal: spacing.md, gap: spacing.md },
-  cardSkeleton: { height: 260 },
+  cardSkeleton: { height: 220 },
   footerSkeleton: {
-    height: 80,
+    height: 64,
     marginHorizontal: spacing.md,
     marginBottom: spacing.md,
   },

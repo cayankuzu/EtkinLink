@@ -1,8 +1,15 @@
 import { colors, layout, radius } from '@shared/theme';
 import type { LucideProps } from 'lucide-react-native';
 import type { ComponentType } from 'react';
-import type { PressableProps, ViewStyle } from 'react-native';
+import { useCallback, useRef } from 'react';
+import type {
+  GestureResponderEvent,
+  PressableProps,
+  ViewStyle,
+} from 'react-native';
 import { Pressable, StyleSheet } from 'react-native';
+
+import { triggerHaptic } from '../lib/haptics';
 
 type IconButtonProps = Omit<PressableProps, 'children' | 'style'> & {
   icon: ComponentType<LucideProps>;
@@ -18,8 +25,20 @@ export function IconButton({
   selected = false,
   danger = false,
   style,
+  onPress,
   ...props
 }: IconButtonProps) {
+  const lastPressAt = useRef(0);
+  const handlePress = useCallback(
+    (event: GestureResponderEvent) => {
+      const now = Date.now();
+      if (now - lastPressAt.current < 350) return;
+      lastPressAt.current = now;
+      triggerHaptic(danger ? 'warning' : 'selection');
+      onPress?.(event);
+    },
+    [danger, onPress],
+  );
   const color = danger
     ? colors.danger
     : selected
@@ -30,7 +49,8 @@ export function IconButton({
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ selected }}
-      hitSlop={6}
+      hitSlop={8}
+      onPress={handlePress}
       style={({ pressed }) => [
         styles.base,
         selected && styles.selected,
@@ -39,15 +59,15 @@ export function IconButton({
       ]}
       {...props}
     >
-      <Icon size={22} color={color} strokeWidth={2} />
+      <Icon size={20} color={color} strokeWidth={2} />
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   base: {
-    width: layout.touchTarget,
-    height: layout.touchTarget,
+    width: layout.compactTouchTarget,
+    height: layout.compactTouchTarget,
     borderRadius: radius.full,
     borderWidth: 1,
     borderColor: colors.border,

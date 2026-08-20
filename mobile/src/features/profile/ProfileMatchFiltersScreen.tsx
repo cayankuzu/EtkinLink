@@ -12,6 +12,7 @@ import {
 import { normalizeTurkishSearch } from '@shared/constants/cities';
 import { premiumComingSoonMessage } from '@shared/constants/premium';
 import { toAppError } from '@shared/lib/errors';
+import { queryKeys } from '@shared/lib/queryKeys';
 import { colors, radius, spacing } from '@shared/theme';
 import type { ProfileGender } from '@shared/types/domain';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -38,7 +39,7 @@ const genderOptions: Array<{ value: ProfileGender; label: string }> = [
 
 export function ProfileMatchFiltersScreen({ navigation }: Props) {
   const settings = useQuery({
-    queryKey: ['profile-match-filters'],
+    queryKey: queryKeys.profile.matchFilters,
     queryFn: getProfileMatchFilterSettings,
   });
 
@@ -118,9 +119,11 @@ function MatchFilterForm({
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: ['profile-match-filters'],
+        queryKey: queryKeys.profile.matchFilters,
       });
-      void queryClient.invalidateQueries({ queryKey: ['match-preferences'] });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.matching.preferences,
+      });
       onBack();
     },
   });
@@ -346,7 +349,7 @@ function FilterSection({
 const styles = StyleSheet.create({
   screen: { padding: spacing.md, paddingBottom: spacing.xxl, gap: spacing.md },
   header: {
-    height: 52,
+    height: 48,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

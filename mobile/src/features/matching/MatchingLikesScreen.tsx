@@ -2,14 +2,17 @@ import type { MatchesStackParamList } from '@app/navigation/types';
 import { useScrollToTop } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
+  AppButton,
+  AppImage,
   AppText,
   ErrorState,
   IconButton,
   Screen,
   StateView,
 } from '@shared/components';
-import { premiumComingSoonMessage } from '@shared/constants/premium';
 import { toAppError } from '@shared/lib/errors';
+import { getGenderLabel } from '@shared/lib/profileLabels';
+import { queryKeys } from '@shared/lib/queryKeys';
 import { colors, radius, shadows, spacing } from '@shared/theme';
 import {
   useInfiniteQuery,
@@ -17,70 +20,79 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import { Heart, LockKeyhole, Sparkles, X } from 'lucide-react-native';
+import {
+  CalendarDays,
+  Heart,
+  MapPin,
+  Sparkles,
+  UserRound,
+  X,
+} from 'lucide-react-native';
 import { useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   FlatList,
   Image,
+  Modal,
   Pressable,
   RefreshControl,
   StyleSheet,
   View,
 } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
-import { scheduleOnRN } from 'react-native-worklets';
 
+import { CandidateCard } from './CandidateCard';
+import {
+  restorePendingLikes,
+  suppressCandidateFromPendingLikes,
+} from './matchingQueryCache';
 import {
   changeLikeToPass,
   getMatchingLikeCounts,
   type LikedCandidate,
   listIncomingLikedCandidates,
   listLikedCandidates,
+  swipeCandidate,
 } from './matchingService';
 
 type Props = NativeStackScreenProps<MatchesStackParamList, 'Matches'>;
 type Section = 'outgoing' | 'incoming';
+type SelectedProfile = { item: LikedCandidate; source: Section };
 
-export function MatchingLikesScreen(_props: Props) {
+export function MatchingLikesScreen({ route }: Props) {
   const queryClient = useQueryClient();
   const outgoingRef = useRef<FlatList<LikedCandidate>>(null);
   const incomingRef = useRef<FlatList<LikedCandidate>>(null);
   useScrollToTop(outgoingRef);
   useScrollToTop(incomingRef);
-  const [section, setSection] = useState<Section>('outgoing');
-  const [hiddenIds, setHiddenIds] = useState<Set<string>>(() => new Set());
+  const [section, setSection] = useState<Section>(
+    route.params?.section ?? 'outgoing',
+  );
+  const [selectedProfile, setSelectedProfile] =
+    useState<SelectedProfile | null>(null);
   const counts = useQuery({
-    queryKey: ['matching-like-counts'],
-    queryFn: getMatchingLikeCounts,
+    queryKey: queryKeys.matching.likeCounts,
+    queryFn: ({ signal }) => getMatchingLikeCounts(signal),
     staleTime: 30_000,
   });
   const liked = useInfiniteQuery({
-    queryKey: ['liked-candidates'],
-    queryFn: ({ pageParam }) => listLikedCandidates(pageParam),
+    queryKey: queryKeys.matching.liked,
+    queryFn: ({ pageParam, signal }) => listLikedCandidates(pageParam, signal),
     initialPageParam: null as { likedAt: string; userId: string } | null,
     getNextPageParam: page => page.nextCursor,
     staleTime: 30_000,
   });
   const incomingLiked = useInfiniteQuery({
-    queryKey: ['incoming-liked-candidates'],
-    queryFn: ({ pageParam }) => listIncomingLikedCandidates(pageParam),
+    queryKey: queryKeys.matching.incomingLiked,
+    queryFn: ({ pageParam, signal }) =>
+      listIncomingLikedCandidates(pageParam, signal),
     initialPageParam: null as { likedAt: string; userId: string } | null,
     getNextPageParam: page => page.nextCursor,
     enabled: section === 'incoming',
     staleTime: 30_000,
   });
   const items = useMemo(
-    () =>
-      (liked.data?.pages.flatMap(page => page.items) ?? []).filter(
-        item => !hiddenIds.has(item.candidate.id),
-      ),
-    [hiddenIds, liked.data],
+    () => liked.data?.pages.flatMap(page => page.items) ?? [],
+    [liked.data],
   );
   const incomingItems = useMemo(
     () => incomingLiked.data?.pages.flatMap(page => page.items) ?? [],
@@ -90,25 +102,56 @@ export function MatchingLikesScreen(_props: Props) {
     mutationFn: (item: LikedCandidate) =>
       changeLikeToPass(item.eventId, item.candidate.id),
     onMutate: item => {
-      setHiddenIds(value => new Set(value).add(item.candidate.id));
+      setSelectedProfile(null);
+      return suppressCandidateFromPendingLikes(queryClient, item.candidate.id);
     },
     onSuccess: quota => {
-      queryClient.setQueryData(['swipe-quota'], quota);
+      queryClient.setQueryData(queryKeys.matching.swipeQuota, quota);
       void queryClient.invalidateQueries({
-        queryKey: ['matching-like-counts'],
+        queryKey: queryKeys.matching.likeCounts,
       });
-      void queryClient.invalidateQueries({ queryKey: ['liked-candidates'] });
       void queryClient.invalidateQueries({
-        queryKey: ['candidates'],
+        queryKey: queryKeys.matching.liked,
+      });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.matching.incomingLiked,
+      });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.matching.candidates(),
         refetchType: 'inactive',
       });
     },
-    onError: (_error, item) => {
-      setHiddenIds(value => {
-        const next = new Set(value);
-        next.delete(item.candidate.id);
-        return next;
+    onError: (error, _item, snapshot) => {
+      if (snapshot) restorePendingLikes(queryClient, snapshot);
+      Alert.alert('İşlem tamamlanamadı', toAppError(error).message);
+    },
+  });
+  const rejectIncoming = useMutation({
+    mutationFn: (item: LikedCandidate) =>
+      swipeCandidate(item.eventId, item.candidate.id, 'pass'),
+    onMutate: item => {
+      setSelectedProfile(null);
+      return suppressCandidateFromPendingLikes(queryClient, item.candidate.id);
+    },
+    onSuccess: result => {
+      queryClient.setQueryData(queryKeys.matching.swipeQuota, result.quota);
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.matching.likeCounts,
       });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.matching.liked,
+      });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.matching.incomingLiked,
+      });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.matching.candidates(),
+        refetchType: 'inactive',
+      });
+    },
+    onError: (error, _item, snapshot) => {
+      if (snapshot) restorePendingLikes(queryClient, snapshot);
+      Alert.alert('Profil geçilemedi', toAppError(error).message);
     },
   });
 
@@ -118,12 +161,11 @@ export function MatchingLikesScreen(_props: Props) {
       liked.refetch(),
       incomingLiked.refetch(),
     ]);
-    setHiddenIds(new Set());
   }
 
   if (counts.isError || liked.isError || incomingLiked.isError) {
     return (
-      <Screen>
+      <Screen testID="matching-screen">
         <ErrorState
           title="Eşleşme listesi yüklenemedi"
           description={
@@ -139,7 +181,7 @@ export function MatchingLikesScreen(_props: Props) {
 
   const incomingCount = counts.data?.incomingCount ?? 0;
   return (
-    <Screen contentStyle={styles.screen}>
+    <Screen contentStyle={styles.screen} testID="matching-screen">
       <View style={styles.header}>
         <View style={styles.headerIcon}>
           <Heart size={22} color={colors.brand} fill={colors.brandSoft} />
@@ -167,9 +209,12 @@ export function MatchingLikesScreen(_props: Props) {
       {section === 'outgoing' ? (
         <FlatList
           ref={outgoingRef}
-          key="outgoing-list"
+          key="outgoing-grid"
+          style={styles.results}
           data={items}
-          keyExtractor={item => item.candidate.id}
+          keyExtractor={item => `${item.eventId}:${item.candidate.id}`}
+          numColumns={2}
+          columnWrapperStyle={items.length > 1 ? styles.profileRow : undefined}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
           refreshControl={
@@ -187,6 +232,7 @@ export function MatchingLikesScreen(_props: Props) {
                 changeReaction.isPending &&
                 changeReaction.variables?.candidate.id === item.candidate.id
               }
+              onOpen={() => setSelectedProfile({ item, source: 'outgoing' })}
               onRemove={() => changeReaction.mutate(item)}
             />
           )}
@@ -211,10 +257,11 @@ export function MatchingLikesScreen(_props: Props) {
           ref={incomingRef}
           data={incomingItems}
           key="incoming-grid"
+          style={styles.results}
           keyExtractor={item => `${item.eventId}:${item.candidate.id}`}
           numColumns={2}
           columnWrapperStyle={
-            incomingItems.length > 1 ? styles.lockedRow : undefined
+            incomingItems.length > 1 ? styles.profileRow : undefined
           }
           contentContainerStyle={styles.list}
           refreshControl={
@@ -225,8 +272,17 @@ export function MatchingLikesScreen(_props: Props) {
               colors={[colors.brand]}
             />
           }
-          ListHeaderComponent={<PremiumLock />}
-          renderItem={({ item }) => <LockedProfile item={item} />}
+          renderItem={({ item }) => (
+            <LikedProfileCard
+              item={item}
+              removing={
+                rejectIncoming.isPending &&
+                rejectIncoming.variables?.candidate.id === item.candidate.id
+              }
+              showRemoveAction={false}
+              onOpen={() => setSelectedProfile({ item, source: 'incoming' })}
+            />
+          )}
           onEndReached={() => {
             if (incomingLiked.hasNextPage && !incomingLiked.isFetchingNextPage)
               void incomingLiked.fetchNextPage();
@@ -244,6 +300,64 @@ export function MatchingLikesScreen(_props: Props) {
           }
         />
       )}
+      <Modal
+        visible={Boolean(selectedProfile)}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setSelectedProfile(null)}
+      >
+        <Screen contentStyle={styles.detailScreen}>
+          <View style={styles.detailHeader}>
+            <View style={styles.detailHeading}>
+              <AppText variant="label15">
+                {selectedProfile?.source === 'incoming'
+                  ? 'Gelen beğeniyi değerlendir'
+                  : 'Profil detayları'}
+              </AppText>
+              <AppText variant="tiny11" tone="secondary" numberOfLines={1}>
+                {selectedProfile?.item.eventTitle ?? 'Etkinlik'}
+              </AppText>
+            </View>
+            <IconButton
+              icon={X}
+              label="Profil detaylarını kapat"
+              onPress={() => setSelectedProfile(null)}
+            />
+          </View>
+          {selectedProfile ? (
+            selectedProfile.source === 'incoming' ? (
+              <View style={styles.detailCard}>
+                <CandidateCard
+                  candidate={selectedProfile.item.candidate}
+                  eventTitle={selectedProfile.item.eventTitle}
+                  showLikeAction={false}
+                  disabled={rejectIncoming.isPending}
+                  onPass={() => rejectIncoming.mutate(selectedProfile.item)}
+                />
+              </View>
+            ) : (
+              <>
+                <View style={styles.detailCard}>
+                  <CandidateCard
+                    candidate={selectedProfile.item.candidate}
+                    eventTitle={selectedProfile.item.eventTitle}
+                    showActions={false}
+                  />
+                </View>
+                <AppButton
+                  label="Beğeniyi kaldır ve geç"
+                  variant="danger"
+                  icon={X}
+                  loading={changeReaction.isPending}
+                  onPress={async () => {
+                    await changeReaction.mutateAsync(selectedProfile.item);
+                  }}
+                />
+              </>
+            )
+          ) : null}
+        </Screen>
+      </Modal>
     </Screen>
   );
 }
@@ -278,155 +392,102 @@ function SectionButton({
 function LikedProfileCard({
   item,
   removing,
+  showRemoveAction = true,
+  onOpen,
   onRemove,
 }: {
   item: LikedCandidate;
   removing: boolean;
-  onRemove: () => void;
+  showRemoveAction?: boolean;
+  onOpen: () => void;
+  onRemove?: () => void;
 }) {
   const profile = item.candidate;
-  const translateX = useSharedValue(0);
-  const canRemove = !item.matched && !removing;
-  const swipe = Gesture.Pan()
-    .activeOffsetX([-20, 20])
-    .failOffsetY([-16, 16])
-    .onUpdate(event => {
-      translateX.value = Math.min(0, event.translationX);
-    })
-    .onEnd(event => {
-      if (canRemove && event.translationX <= -96) {
-        translateX.value = withTiming(-420, { duration: 210 }, finished => {
-          if (finished) scheduleOnRN(onRemove);
-        });
-        return;
-      }
-      translateX.value = withSpring(0, { damping: 18, stiffness: 190 });
-    });
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }],
-  }));
 
   return (
-    <View style={styles.swipeShell}>
-      <View style={styles.swipeHint}>
-        <X size={19} color={colors.textInverse} />
-        <AppText variant="caption12" tone="inverse">
-          Geç
-        </AppText>
-      </View>
-      <GestureDetector gesture={swipe}>
-        <Animated.View style={[styles.profileCard, animatedStyle]}>
-          {profile.photos[0]?.url ? (
-            <Image
-              source={{ uri: profile.photos[0].url }}
-              style={styles.avatar}
-            />
-          ) : (
-            <View style={styles.avatar} />
-          )}
-          <View style={styles.profileInfo}>
-            <View style={styles.nameRow}>
-              <AppText variant="label15" numberOfLines={1} style={styles.name}>
-                {profile.fullName}
-                {profile.age !== null ? `, ${profile.age}` : ''}
-              </AppText>
-              {profile.compatibility ? (
-                <View style={styles.scoreBadge}>
-                  <Sparkles size={12} color={colors.brand} />
-                  <AppText variant="tiny11" tone="brand">
-                    %{profile.compatibility.score}
-                  </AppText>
-                </View>
-              ) : null}
-            </View>
-            <AppText variant="caption12" tone="secondary" numberOfLines={1}>
-              @{profile.username} · {profile.city}
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${profile.fullName} profilini aç`}
+      accessibilityHint="Profil fotoğraflarını ve ayrıntılarını gösterir"
+      onPress={onOpen}
+      style={({ pressed }) => [
+        styles.profileCard,
+        pressed && styles.profileCardPressed,
+      ]}
+    >
+      <View style={styles.profileVisual}>
+        {profile.photos[0]?.url ? (
+          <AppImage
+            uri={profile.photos[0].url}
+            style={styles.profileImage}
+            highPriority
+            accessibilityLabel={`${profile.fullName} profil fotoğrafı`}
+          />
+        ) : (
+          <Image
+            source={require('../../assets/images/etkinlink-symbol.png')}
+            style={styles.profilePlaceholder}
+          />
+        )}
+        {profile.compatibility ? (
+          <View style={styles.scoreBadge}>
+            <Sparkles size={12} color={colors.brand} />
+            <AppText variant="tiny11" tone="brand">
+              %{profile.compatibility.score}
             </AppText>
-            <AppText variant="caption12" tone="secondary" numberOfLines={1}>
-              {item.eventTitle}
-            </AppText>
-            {item.matched ? (
-              <AppText variant="caption12" tone="success">
-                Eşleştiniz · sohbet Mesajlar alanında
-              </AppText>
-            ) : (
-              <AppText variant="tiny11" tone="tertiary">
-                {new Date(item.likedAt).toLocaleDateString('tr-TR')}
-              </AppText>
-            )}
           </View>
+        ) : null}
+        {showRemoveAction && onRemove ? (
           <IconButton
             icon={X}
-            label={item.matched ? 'Aktif eşleşme' : 'Beğeniyi kaldır ve geç'}
+            label="Beğeniyi kaldır ve geç"
             danger
-            disabled={!canRemove}
-            onPress={onRemove}
+            disabled={removing}
+            onPress={event => {
+              event.stopPropagation();
+              onRemove();
+            }}
+            style={styles.removeButton}
           />
-        </Animated.View>
-      </GestureDetector>
-    </View>
-  );
-}
-
-function PremiumLock() {
-  return (
-    <View style={styles.premiumCard}>
-      <View style={styles.lockIcon}>
-        <LockKeyhole size={22} color={colors.brand} />
+        ) : null}
       </View>
-      <View style={styles.premiumText}>
-        <AppText variant="label15">Seni beğenenler gizli</AppText>
-        <AppText variant="caption12" tone="secondary">
-          {premiumComingSoonMessage}
+      <View style={styles.profileInfo}>
+        <AppText variant="label15" numberOfLines={1}>
+          {profile.fullName}
+          {profile.age !== null ? `, ${profile.age}` : ''}
         </AppText>
-      </View>
-    </View>
-  );
-}
-
-function LockedProfile({ item }: { item: LikedCandidate }) {
-  const photoUrl = item.candidate.photos[0]?.url;
-  return (
-    <View style={styles.lockedCard} accessibilityLabel="Gizli beğenen profili">
-      {photoUrl ? (
-        <Image
-          source={{ uri: photoUrl }}
-          style={styles.lockedImage}
-          blurRadius={24}
-        />
-      ) : (
-        <Image
-          source={require('../../assets/images/etkinlink-symbol.png')}
-          style={styles.lockedImage}
-          blurRadius={18}
-        />
-      )}
-      <View style={styles.lockedContent}>
-        <View style={styles.lockedLineWide} />
-        <View style={styles.lockedLine} />
-        <View style={styles.lockedPills}>
-          <View style={styles.lockedPill} />
-          <View style={styles.lockedPill} />
+        <AppText variant="caption12" tone="secondary" numberOfLines={1}>
+          @{profile.username}
+        </AppText>
+        <View style={styles.profileMeta}>
+          <UserRound size={13} color={colors.textSecondary} />
+          <AppText variant="tiny11" tone="secondary" numberOfLines={1}>
+            {getGenderLabel(profile.gender)}
+          </AppText>
         </View>
-      </View>
-      <View style={styles.lockedOverlay} pointerEvents="none">
-        <View style={styles.lockedBadge}>
-          <LockKeyhole size={18} color={colors.textInverse} />
-          <AppText variant="tiny11" tone="inverse">
-            Premium
+        <View style={styles.profileMeta}>
+          <MapPin size={13} color={colors.textSecondary} />
+          <AppText variant="tiny11" tone="secondary" numberOfLines={1}>
+            {profile.city || 'Konum gizli'}
+          </AppText>
+        </View>
+        <View style={styles.eventMeta}>
+          <CalendarDays size={12} color={colors.brand} />
+          <AppText variant="tiny11" tone="brand" numberOfLines={1}>
+            {item.eventTitle}
           </AppText>
         </View>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
 function LoadingRows() {
   return (
     <View style={styles.loadingRows}>
-      <View style={styles.loadingRow} />
-      <View style={styles.loadingRow} />
-      <View style={styles.loadingRow} />
+      {Array.from({ length: 4 }, (_, index) => (
+        <View key={index} style={styles.loadingRow} />
+      ))}
     </View>
   );
 }
@@ -434,7 +495,7 @@ function LoadingRows() {
 const styles = StyleSheet.create({
   screen: { paddingHorizontal: spacing.md },
   header: {
-    minHeight: 78,
+    minHeight: 60,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
@@ -462,129 +523,84 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
   },
   tabSelected: { backgroundColor: colors.surface, ...shadows.card },
+  results: { flex: 1 },
   list: { flexGrow: 1, gap: spacing.sm, paddingVertical: spacing.md },
+  profileRow: { gap: spacing.sm },
   profileCard: {
-    minHeight: 112,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
+    flex: 1,
+    maxWidth: '49%',
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    padding: spacing.sm,
+    overflow: 'hidden',
     ...shadows.card,
   },
-  swipeShell: {
-    borderRadius: radius.lg,
-    overflow: 'hidden',
-    backgroundColor: colors.danger,
+  profileCardPressed: { opacity: 0.9, transform: [{ scale: 0.985 }] },
+  profileVisual: {
+    width: '100%',
+    aspectRatio: 0.86,
+    backgroundColor: colors.surfaceMuted,
   },
-  swipeHint: {
+  profileImage: { width: '100%', height: '100%' },
+  profilePlaceholder: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'contain',
+    tintColor: colors.brand,
+  },
+  removeButton: {
     position: 'absolute',
-    top: 0,
-    right: spacing.lg,
-    bottom: 0,
+    top: spacing.xs,
+    right: spacing.xs,
+    width: 40,
+    height: 40,
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    borderColor: 'rgba(255,255,255,0.86)',
+    ...shadows.floating,
+  },
+  profileInfo: { gap: 3, padding: spacing.sm },
+  profileMeta: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
   },
-  avatar: {
-    width: 80,
-    height: 88,
-    borderRadius: radius.md,
-    backgroundColor: colors.surfaceMuted,
+  eventMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: spacing.xxs,
+    borderRadius: radius.sm,
+    backgroundColor: colors.brandSubtle,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
   },
-  profileInfo: { flex: 1, gap: 3 },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  name: { flexShrink: 1 },
   scoreBadge: {
+    position: 'absolute',
+    top: spacing.xs,
+    left: spacing.xs,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 2,
     borderRadius: radius.full,
-    backgroundColor: colors.brandSoft,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 5,
+    ...shadows.card,
   },
-  premiumCard: {
+  detailScreen: { padding: spacing.md, gap: spacing.sm },
+  detailHeader: {
+    minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.brandSubtle,
-    padding: spacing.md,
-    marginBottom: spacing.md,
   },
-  lockIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.brandSoft,
-  },
-  premiumText: { flex: 1, gap: 3 },
-  lockedRow: { gap: spacing.sm },
-  lockedCard: {
-    flex: 1,
-    aspectRatio: 0.78,
-    maxWidth: '49%',
-    borderRadius: radius.lg,
-    overflow: 'hidden',
-    backgroundColor: colors.surfaceMuted,
-  },
-  lockedImage: { width: '100%', height: '100%', opacity: 0.52 },
-  lockedContent: {
-    position: 'absolute',
-    right: spacing.sm,
-    bottom: spacing.sm,
-    left: spacing.sm,
-    gap: 6,
-  },
-  lockedLineWide: {
-    width: '76%',
-    height: 10,
-    borderRadius: radius.full,
-    backgroundColor: 'rgba(255,255,255,0.68)',
-  },
-  lockedLine: {
-    width: '54%',
-    height: 8,
-    borderRadius: radius.full,
-    backgroundColor: 'rgba(255,255,255,0.52)',
-  },
-  lockedPills: { flexDirection: 'row', gap: 5 },
-  lockedPill: {
-    width: 36,
-    height: 14,
-    borderRadius: radius.full,
-    backgroundColor: 'rgba(255,255,255,0.42)',
-  },
-  lockedOverlay: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(16, 24, 40, 0.28)',
-  },
-  lockedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    borderRadius: radius.full,
-    backgroundColor: 'rgba(16, 24, 40, 0.54)',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 5,
-  },
-  loadingRows: { gap: spacing.sm },
+  detailHeading: { flex: 1, gap: 2 },
+  detailCard: { flex: 1, minHeight: 0 },
+  loadingRows: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   loadingRow: {
-    height: 112,
+    width: '48%',
+    aspectRatio: 0.62,
     borderRadius: radius.lg,
     backgroundColor: colors.surfaceMuted,
   },

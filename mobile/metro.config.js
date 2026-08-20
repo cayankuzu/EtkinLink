@@ -1,12 +1,15 @@
-const { mergeConfig } = require('@react-native/metro-config');
-const { getDefaultConfig } = require('expo/metro-config');
+const { getSentryExpoConfig } = require('@sentry/react-native/metro');
 
 /**
  * Metro configuration
- * https://reactnative.dev/docs/metro
+ * https://docs.sentry.io/platforms/react-native/manual-setup/metro/
  *
  * @type {import('@react-native/metro-config').MetroConfig}
  */
-const config = {};
+const config = getSentryExpoConfig(__dirname, {
+  // EtkinLink only ships native clients. Excluding the web replay modules keeps
+  // the native dependency graph smaller and avoids resolving unused SDK code.
+  includeWebReplay: false,
+});
 
-module.exports = mergeConfig(getDefaultConfig(__dirname), config);
+module.exports = config;

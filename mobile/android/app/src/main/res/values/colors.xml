@@ -1,0 +1,5 @@
+<resources>
+    <color name="icon_background">#F7F8FC</color>
+    <color name="notification_icon_color">#5B4BFF</color>
+    <color name="splashscreen_background">#F7F8FC</color>
+</resources>

@@ -11,6 +11,7 @@ import {
 } from '@shared/components';
 import { contentLimits } from '@shared/constants/limits';
 import { toAppError } from '@shared/lib/errors';
+import { queryKeys } from '@shared/lib/queryKeys';
 import { colors, spacing } from '@shared/theme';
 import { useQuery } from '@tanstack/react-query';
 import { BookOpenText, Sparkles } from 'lucide-react-native';
@@ -30,7 +31,7 @@ export function SignUpInterestsScreen({ navigation }: Props) {
   const [city, setCity] = useState(saved?.city ?? '');
   const [bio, setBio] = useState(saved?.bio ?? '');
   const interests = useQuery({
-    queryKey: ['registration-interests'],
+    queryKey: queryKeys.auth.registrationInterests,
     queryFn: listRegistrationInterests,
     staleTime: 24 * 60 * 60_000,
   });

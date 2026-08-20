@@ -66,7 +66,9 @@ function entityName(value: unknown): string | null {
 }
 
 function uniqueNames(values: Array<string | null>): string[] {
-  return [...new Set(values.filter((value): value is string => Boolean(value)))];
+  return [
+    ...new Set(values.filter((value): value is string => Boolean(value))),
+  ];
 }
 
 async function fetchApiEvent(externalId: number): Promise<JsonObject> {
@@ -95,7 +97,7 @@ async function fetchApiEvent(externalId: number): Promise<JsonObject> {
   }
 }
 
-Deno.serve(async request => {
+Deno.serve(async (request) => {
   if (request.method !== "POST") {
     return response(405, { error: "Yalnızca POST desteklenir." });
   }
@@ -113,7 +115,9 @@ Deno.serve(async request => {
   const supabase = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  const { data: authData, error: authError } = await supabase.auth.getUser(token);
+  const { data: authData, error: authError } = await supabase.auth.getUser(
+    token,
+  );
   if (authError || !authData.user) {
     return response(401, { error: "Geçersiz oturum." });
   }
@@ -122,7 +126,9 @@ Deno.serve(async request => {
     const body = record(await request.json()) ?? {};
     const sourceUrl = secureUrl(body.source_url);
     const sourceId = sourceUrl
-      ? numberValue(new URL(sourceUrl).pathname.match(/^\/etkinlik\/(\d+)/)?.[1])
+      ? numberValue(
+        new URL(sourceUrl).pathname.match(/^\/etkinlik\/(\d+)/)?.[1],
+      )
       : null;
     const clientEvent = record(body.event);
     const externalId = sourceId ?? numberValue(clientEvent?.external_id);
@@ -154,12 +160,11 @@ Deno.serve(async request => {
     const startAt = validDate(
       apiEvent.start_r001 ?? apiEvent.start ?? clientEvent?.start_at,
     );
-    const source =
-      secureUrl(apiEvent.url) ??
+    const source = secureUrl(apiEvent.url) ??
       sourceUrl ??
       `https://etkinlik.io/etkinlik/${externalId}`;
-    const imageUrl =
-      secureUrl(apiEvent.poster_url) ?? secureUrl(clientEvent?.image_url);
+    const imageUrl = secureUrl(apiEvent.poster_url) ??
+      secureUrl(clientEvent?.image_url);
     if (!title || !startAt || !imageUrl) {
       return response(422, {
         error: "Etkinliğin zorunlu API alanları okunamadı.",
@@ -172,24 +177,25 @@ Deno.serve(async request => {
       source_guid: source,
       source_url: source,
       title: title.slice(0, 180),
-      summary:
-        description?.slice(0, 500) ?? cleanHtml(clientEvent?.summary)?.slice(0, 500) ?? null,
+      summary: description?.slice(0, 500) ??
+        cleanHtml(clientEvent?.summary)?.slice(0, 500) ?? null,
       description,
       start_at: startAt,
       end_at: validDate(apiEvent.end_r001 ?? clientEvent?.end_at),
-      venue:
-        entityName(venueData) ??
-        (venueType === "ONLINE" ? "Çevrim içi" : text(clientEvent?.venue) || null),
+      venue: entityName(venueData) ??
+        (venueType === "ONLINE"
+          ? "Çevrim içi"
+          : text(clientEvent?.venue) || null),
       city: registeredVenue
         ? entityName(cityData)
         : manualVenue
-          ? text(venueData?.city_name) || null
-          : text(clientEvent?.city) || null,
+        ? text(venueData?.city_name) || null
+        : text(clientEvent?.city) || null,
       district: registeredVenue
         ? entityName(districtData)
         : manualVenue
-          ? text(venueData?.district_name) || null
-          : text(clientEvent?.district) || null,
+        ? text(venueData?.district_name) || null
+        : text(clientEvent?.district) || null,
       address: text(venueData?.address) || text(clientEvent?.address) || null,
       image_url: imageUrl,
       categories,
@@ -210,7 +216,9 @@ Deno.serve(async request => {
     if (error) throw new Error(`DATABASE_${error.code}`);
     return response(200, { event_id: data.id });
   } catch (error) {
-    const code = error instanceof Error ? error.message.slice(0, 80) : "UNKNOWN";
+    const code = error instanceof Error
+      ? error.message.slice(0, 80)
+      : "UNKNOWN";
     return response(502, {
       error: "Etkinlik resmi API üzerinden eşitlenemedi.",
       code,

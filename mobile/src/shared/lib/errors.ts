@@ -1,4 +1,5 @@
 export type AppErrorCode =
+  | 'configuration'
   | 'network'
   | 'unauthorized'
   | 'forbidden'

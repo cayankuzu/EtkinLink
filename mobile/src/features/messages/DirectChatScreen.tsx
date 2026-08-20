@@ -3,7 +3,9 @@ import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   AppButton,
+  AppImage,
   AppText,
+  ChatComposer,
   Chip,
   ErrorState,
   IconButton,
@@ -18,11 +20,12 @@ import {
   listOutbox,
   removeFromOutbox,
 } from '@shared/lib/chatOutbox';
-import { formatMessageDateTime } from '@shared/lib/date';
 import { toAppError } from '@shared/lib/errors';
 import { createClientId } from '@shared/lib/ids';
+import { queryKeys } from '@shared/lib/queryKeys';
 import { supabase } from '@shared/lib/supabase';
-import { colors, radius, spacing, typography } from '@shared/theme';
+import { captureAppError } from '@shared/lib/telemetry';
+import { colors, layout, radius, spacing } from '@shared/theme';
 import type { DirectMessage } from '@shared/types/domain';
 import { FlashList } from '@shopify/flash-list';
 import {
@@ -30,29 +33,19 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import {
-  ArrowLeft,
-  Check,
-  CheckCheck,
-  Clock3,
-  MoreVertical,
-  RotateCcw,
-  Send,
-  Smile,
-} from 'lucide-react-native';
+import { ArrowLeft, MoreVertical } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
-  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
   StyleSheet,
-  TextInput,
   View,
 } from 'react-native';
 
+import { DirectMessageBubble } from './DirectMessageBubble';
 import {
   blockUser,
   deleteMatchChat,
@@ -97,13 +90,13 @@ export function DirectChatScreen({ route, navigation }: Props) {
   const [reportDetails, setReportDetails] = useState('');
   const [reportBusy, setReportBusy] = useState(false);
   const match = useQuery({
-    queryKey: ['match', route.params.matchId],
-    queryFn: () => getMatch(route.params.matchId),
+    queryKey: queryKeys.messages.match(route.params.matchId),
+    queryFn: ({ signal }) => getMatch(route.params.matchId, signal),
   });
   const messages = useInfiniteQuery({
-    queryKey: ['direct-messages', route.params.matchId],
-    queryFn: ({ pageParam }) =>
-      listDirectMessages(route.params.matchId, pageParam),
+    queryKey: queryKeys.messages.direct(route.params.matchId),
+    queryFn: ({ pageParam, signal }) =>
+      listDirectMessages(route.params.matchId, pageParam, signal),
     initialPageParam: null as { createdAt: string; id: string } | null,
     getNextPageParam: page => page.nextCursor,
   });
@@ -120,9 +113,11 @@ export function DirectChatScreen({ route, navigation }: Props) {
   }, [pending, persisted]);
   const refresh = useCallback(() => {
     void queryClient.invalidateQueries({
-      queryKey: ['direct-messages', route.params.matchId],
+      queryKey: queryKeys.messages.direct(route.params.matchId),
     });
-    void queryClient.invalidateQueries({ queryKey: ['matches'] });
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.messages.matches,
+    });
   }, [queryClient, route.params.matchId]);
   const writable = match.data?.status === 'active';
   const presence = useConversationPresence({
@@ -140,24 +135,27 @@ export function DirectChatScreen({ route, navigation }: Props) {
   }, [refresh, route.params.matchId]);
 
   useEffect(() => {
-    void supabase.auth
-      .getUser()
-      .then(({ data }) => setUserId(data.user?.id ?? null));
-    void listOutbox('direct', route.params.matchId).then(outbox =>
-      setPending(
-        outbox.map(item => ({
-          id: item.clientMessageId,
-          matchId: route.params.matchId,
-          senderId: '',
-          receiverId: '',
-          body: item.body,
-          clientMessageId: item.clientMessageId,
-          readAt: null,
-          createdAt: item.createdAt,
-          status: 'failed',
-        })),
-      ),
-    );
+    void supabase.auth.getUser().then(({ data }) => {
+      const currentUserId = data.user?.id ?? null;
+      setUserId(currentUserId);
+      if (!currentUserId) return;
+      void listOutbox(currentUserId, 'direct', route.params.matchId).then(
+        outbox =>
+          setPending(
+            outbox.map(item => ({
+              id: item.clientMessageId,
+              matchId: route.params.matchId,
+              senderId: currentUserId,
+              receiverId: '',
+              body: item.body,
+              clientMessageId: item.clientMessageId,
+              readAt: null,
+              createdAt: item.createdAt,
+              status: 'failed',
+            })),
+          ),
+      );
+    });
     return subscribeToDirectMessages(route.params.matchId, () => {
       void markReadAndRefresh().catch(() => refresh());
     });
@@ -184,9 +182,14 @@ export function DirectChatScreen({ route, navigation }: Props) {
             : item,
         ),
       );
-      void removeFromOutbox(message.clientMessageId).catch(() => undefined);
+      if (userId) {
+        void removeFromOutbox(userId, message.clientMessageId).catch(
+          () => undefined,
+        );
+      }
       refresh();
-    } catch {
+    } catch (error) {
+      captureAppError(error, { operation: 'message.direct_send' });
       setPending(current =>
         current.map(item =>
           item.clientMessageId === message.clientMessageId
@@ -216,11 +219,14 @@ export function DirectChatScreen({ route, navigation }: Props) {
     presence.setTyping(false);
     setPending(current => [optimistic, ...current]);
     await enqueueOutbox({
+      ownerId: userId,
       kind: 'direct',
       contextId: route.params.matchId,
       clientMessageId,
       body: trimmed,
       createdAt,
+      attempt: 0,
+      nextAttemptAt: createdAt,
     });
     await deliver(optimistic);
   }
@@ -234,7 +240,7 @@ export function DirectChatScreen({ route, navigation }: Props) {
           text: 'İptal et',
           style: 'destructive',
           onPress: () => {
-            void removeFromOutbox(message.clientMessageId);
+            if (userId) void removeFromOutbox(userId, message.clientMessageId);
             setPending(current =>
               current.filter(
                 item => item.clientMessageId !== message.clientMessageId,
@@ -272,7 +278,7 @@ export function DirectChatScreen({ route, navigation }: Props) {
             void endMatch(route.params.matchId)
               .then(() => {
                 queryClient.setQueryData(
-                  ['match', route.params.matchId],
+                  queryKeys.messages.match(route.params.matchId),
                   match.data ? { ...match.data, status: 'ended' } : undefined,
                 );
                 refresh();
@@ -299,11 +305,14 @@ export function DirectChatScreen({ route, navigation }: Props) {
           onPress: () => {
             void blockUser(match.data.otherUser.id)
               .then(() => {
-                queryClient.setQueryData(['match', route.params.matchId], {
-                  ...match.data,
-                  status: 'blocked',
-                  blockedByMe: true,
-                });
+                queryClient.setQueryData(
+                  queryKeys.messages.match(route.params.matchId),
+                  {
+                    ...match.data,
+                    status: 'blocked',
+                    blockedByMe: true,
+                  },
+                );
                 refresh();
               })
               .catch(error =>
@@ -327,11 +336,14 @@ export function DirectChatScreen({ route, navigation }: Props) {
           onPress: () => {
             void unblockUser(match.data.otherUser.id)
               .then(() => {
-                queryClient.setQueryData(['match', route.params.matchId], {
-                  ...match.data,
-                  status: 'ended',
-                  blockedByMe: false,
-                });
+                queryClient.setQueryData(
+                  queryKeys.messages.match(route.params.matchId),
+                  {
+                    ...match.data,
+                    status: 'ended',
+                    blockedByMe: false,
+                  },
+                );
                 refresh();
               })
               .catch(error =>
@@ -345,9 +357,11 @@ export function DirectChatScreen({ route, navigation }: Props) {
   async function removeChat(mode: 'end' | 'block') {
     try {
       await deleteMatchChat(route.params.matchId, mode);
-      await queryClient.invalidateQueries({ queryKey: ['matches'] });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.messages.matches,
+      });
       queryClient.removeQueries({
-        queryKey: ['direct-messages', route.params.matchId],
+        queryKey: queryKeys.messages.direct(route.params.matchId),
       });
       navigation.goBack();
     } catch (error) {
@@ -458,10 +472,7 @@ export function DirectChatScreen({ route, navigation }: Props) {
         >
           <View style={styles.headerAvatarWrap}>
             {primaryPhoto ? (
-              <Image
-                source={{ uri: primaryPhoto.url }}
-                style={styles.headerAvatar}
-              />
+              <AppImage uri={primaryPhoto.url} style={styles.headerAvatar} />
             ) : (
               <View style={styles.headerAvatar} />
             )}
@@ -519,7 +530,7 @@ export function DirectChatScreen({ route, navigation }: Props) {
           keyExtractor={item => item.id}
           contentContainerStyle={styles.list}
           renderItem={({ item }) => (
-            <DirectBubble
+            <DirectMessageBubble
               message={item}
               mine={item.senderId === userId || item.senderId === ''}
               otherPhotoUrl={primaryPhoto?.url ?? null}
@@ -536,46 +547,23 @@ export function DirectChatScreen({ route, navigation }: Props) {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         {writable ? (
-          <View style={styles.composerWrap}>
-            <View style={styles.composer}>
-              <TextInput
-                accessibilityLabel="Özel mesaj yaz"
-                placeholder="Mesaj yaz..."
-                placeholderTextColor={colors.textTertiary}
-                value={body}
-                maxLength={contentLimits.message}
-                multiline
-                onChangeText={value => {
-                  setBody(value);
-                  presence.setTyping(Boolean(value.trim()));
-                }}
-                onBlur={() => presence.setTyping(false)}
-                style={styles.input}
-              />
-              <IconButton
-                icon={Smile}
-                label="Gülümseme ekle"
-                onPress={() =>
-                  setBody(current =>
-                    current.length < contentLimits.message
-                      ? `${current}😊`
-                      : current,
-                  )
-                }
-                style={styles.composerAction}
-              />
-              <IconButton
-                icon={Send}
-                label="Mesajı gönder"
-                selected
-                disabled={!body.trim()}
-                onPress={() => void submit()}
-              />
-            </View>
-            <AppText variant="tiny11" tone="tertiary" align="right">
-              {body.length}/700
-            </AppText>
-          </View>
+          <ChatComposer
+            accessibilityLabel="Özel mesaj yaz"
+            value={body}
+            onChangeText={value => {
+              setBody(value);
+              presence.setTyping(Boolean(value.trim()));
+            }}
+            onBlur={() => presence.setTyping(false)}
+            onAddEmoji={() =>
+              setBody(current =>
+                current.length < contentLimits.message
+                  ? `${current}😊`
+                  : current,
+              )
+            }
+            onSend={() => void submit()}
+          />
         ) : (
           <View style={styles.locked}>
             <AppText variant="body14" tone="secondary" align="center">
@@ -596,7 +584,7 @@ export function DirectChatScreen({ route, navigation }: Props) {
           style={styles.backdrop}
           onPress={() => setMenuVisible(false)}
         >
-          <View style={styles.sheet}>
+          <View style={styles.sheet} accessibilityViewIsModal>
             <AppText variant="heading20">Sohbet seçenekleri</AppText>
             <AppButton
               label="Sohbet gizlilik ayarları"
@@ -648,7 +636,7 @@ export function DirectChatScreen({ route, navigation }: Props) {
         onRequestClose={() => setReportVisible(false)}
       >
         <View style={styles.backdrop}>
-          <View style={styles.reportSheet}>
+          <View style={styles.reportSheet} accessibilityViewIsModal>
             <AppText variant="heading20">Kullanıcıyı şikâyet et</AppText>
             <View style={styles.reasonChips}>
               {reportReasons.map(reason => (
@@ -694,73 +682,10 @@ export function DirectChatScreen({ route, navigation }: Props) {
   );
 }
 
-function DirectBubble({
-  message,
-  mine,
-  otherPhotoUrl,
-  onFailed,
-}: {
-  message: DirectMessage;
-  mine: boolean;
-  otherPhotoUrl: string | null;
-  onFailed: () => void;
-}) {
-  return (
-    <Pressable
-      disabled={message.status !== 'failed'}
-      onPress={onFailed}
-      style={[styles.messageRow, mine && styles.messageRowMine]}
-    >
-      {!mine ? (
-        otherPhotoUrl ? (
-          <Image source={{ uri: otherPhotoUrl }} style={styles.messageAvatar} />
-        ) : (
-          <View style={styles.messageAvatar} />
-        )
-      ) : null}
-      <View style={[styles.messageColumn, mine && styles.messageColumnMine]}>
-        <View
-          style={[
-            styles.bubble,
-            mine ? styles.bubbleMine : styles.bubbleOther,
-            message.status === 'failed' && styles.bubbleFailed,
-          ]}
-        >
-          <AppText variant="body14" tone={mine ? 'inverse' : 'primary'}>
-            {message.body}
-          </AppText>
-        </View>
-        <View style={[styles.status, mine && styles.statusMine]}>
-          {message.status === 'sending' && mine ? (
-            <Clock3 size={12} color={colors.textTertiary} />
-          ) : message.status === 'failed' ? (
-            <RotateCcw size={12} color={colors.danger} />
-          ) : message.status === 'read' && mine ? (
-            <CheckCheck size={14} color={colors.brand} />
-          ) : mine ? (
-            <Check size={13} color={colors.textTertiary} />
-          ) : null}
-          <AppText variant="tiny11" tone="tertiary">
-            {message.status === 'sending'
-              ? `Gönderiliyor · ${formatMessageDateTime(message.createdAt)}`
-              : message.status === 'failed'
-              ? `Başarısız · ${formatMessageDateTime(message.createdAt)}`
-              : message.status === 'read' && mine
-              ? `Okundu · ${formatMessageDateTime(message.createdAt)}`
-              : mine
-              ? `Gönderildi · ${formatMessageDateTime(message.createdAt)}`
-              : formatMessageDateTime(message.createdAt)}
-          </AppText>
-        </View>
-      </View>
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
   screen: { backgroundColor: colors.canvas },
   header: {
-    minHeight: 78,
+    minHeight: 60,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
@@ -816,77 +741,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xs,
     paddingVertical: 2,
   },
-  headerSkeleton: { height: 64 },
+  headerSkeleton: { height: 60 },
   messagesSkeleton: { flex: 1, margin: spacing.md },
   list: { padding: spacing.md },
-  messageRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    marginBottom: spacing.sm,
-  },
-  messageRowMine: { justifyContent: 'flex-end' },
-  messageAvatar: {
-    width: 28,
-    height: 28,
-    marginRight: spacing.xs,
-    borderRadius: 14,
-    backgroundColor: colors.surfaceMuted,
-  },
-  messageColumn: { maxWidth: '78%', alignItems: 'flex-start' },
-  messageColumnMine: { alignItems: 'flex-end' },
-  bubble: {
-    borderRadius: radius.lg,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 10,
-  },
-  bubbleMine: { backgroundColor: colors.brand, borderBottomRightRadius: 4 },
-  bubbleOther: {
-    backgroundColor: colors.surface,
-    borderBottomLeftRadius: 4,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  bubbleFailed: { backgroundColor: colors.danger },
-  status: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    paddingTop: 2,
-  },
-  statusMine: { alignSelf: 'flex-end' },
-  composerWrap: {
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    backgroundColor: colors.surface,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-  },
-  composer: {
-    minHeight: 52,
-    maxHeight: 128,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surfaceMuted,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    paddingLeft: spacing.sm,
-    paddingRight: 4,
-    paddingVertical: 4,
-  },
-  input: {
-    ...typography.body15,
-    color: colors.textPrimary,
-    flex: 1,
-    maxHeight: 112,
-    paddingVertical: spacing.sm,
-  },
-  composerAction: {
-    width: 40,
-    height: 40,
-    borderWidth: 0,
-    backgroundColor: colors.transparent,
-  },
   locked: {
-    minHeight: 72,
+    minHeight: 60,
     justifyContent: 'center',
     backgroundColor: colors.surfaceMuted,
     padding: spacing.md,
@@ -899,6 +758,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.overlay,
   },
   sheet: {
+    width: '100%',
+    maxWidth: layout.maxModalWidth,
+    maxHeight: '92%',
+    alignSelf: 'center',
     backgroundColor: colors.surface,
     borderTopLeftRadius: radius.xxl,
     borderTopRightRadius: radius.xxl,

@@ -1,6 +1,7 @@
 import type { RoomsStackParamList } from '@app/navigation/types';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
+  AppImage,
   AppText,
   ErrorState,
   IconButton,
@@ -10,13 +11,13 @@ import {
   StateView,
 } from '@shared/components';
 import { toAppError } from '@shared/lib/errors';
+import { queryKeys } from '@shared/lib/queryKeys';
 import { colors, radius, spacing, typography } from '@shared/theme';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Search, UserRound } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
 import {
   FlatList,
-  Image,
   RefreshControl,
   StyleSheet,
   TextInput,
@@ -41,7 +42,7 @@ function normalize(value: string) {
 export function RoomParticipantsScreen({ route, navigation }: Props) {
   const [query, setQuery] = useState('');
   const participants = useQuery({
-    queryKey: ['room-participants', route.params.eventId],
+    queryKey: queryKeys.rooms.participants(route.params.eventId),
     queryFn: () => listRoomParticipants(route.params.eventId),
   });
   const filtered = useMemo(() => {
@@ -136,7 +137,7 @@ function ParticipantRow({ participant }: { participant: RoomParticipant }) {
   return (
     <View style={styles.row}>
       {participant.photoUrl ? (
-        <Image source={{ uri: participant.photoUrl }} style={styles.avatar} />
+        <AppImage uri={participant.photoUrl} style={styles.avatar} />
       ) : (
         <View style={styles.avatarFallback}>
           <UserRound size={20} color={colors.textTertiary} />
@@ -166,7 +167,7 @@ function ParticipantRow({ participant }: { participant: RoomParticipant }) {
 const styles = StyleSheet.create({
   screen: { backgroundColor: colors.canvas, paddingTop: spacing.xs },
   header: {
-    minHeight: 64,
+    minHeight: 56,
     paddingHorizontal: spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
@@ -200,7 +201,7 @@ const styles = StyleSheet.create({
   },
   list: { paddingHorizontal: spacing.md, paddingBottom: spacing.xl, gap: 8 },
   row: {
-    minHeight: 68,
+    minHeight: 60,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
@@ -230,5 +231,5 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   loading: { paddingHorizontal: spacing.md, gap: 8 },
-  skeleton: { height: 68, borderRadius: radius.md },
+  skeleton: { height: 60, borderRadius: radius.md },
 });

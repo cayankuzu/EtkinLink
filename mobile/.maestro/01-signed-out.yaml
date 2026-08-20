@@ -1,0 +1,21 @@
+appId: com.etkinlink.app
+name: Oturum dışı kimlik doğrulama yüzeyi
+tags:
+  - auth
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible:
+      id: welcome-sign-in
+    timeout: 20000
+- assertVisible:
+    id: welcome-sign-up
+- tapOn:
+    id: welcome-sign-in
+- assertVisible:
+    id: sign-in-email
+- assertVisible:
+    id: sign-in-password
+- assertVisible:
+    id: sign-in-submit

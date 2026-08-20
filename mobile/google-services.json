@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "784378331132",
+    "project_id": "etkinlink-prod",
+    "storage_bucket": "etkinlink-prod.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:784378331132:android:db87881aad9e62d32b3c79",
+        "android_client_info": {
+          "package_name": "com.etkinlink.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDEqWkBdqK3x2I-qAz3phTKmDs5EvFlVmM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

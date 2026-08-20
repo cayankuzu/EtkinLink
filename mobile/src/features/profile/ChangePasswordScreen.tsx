@@ -48,7 +48,7 @@ export function ChangePasswordScreen({ navigation }: Props) {
       </View>
       <View style={styles.card}>
         <View style={styles.icon}>
-          <MailCheck size={32} color={colors.brand} />
+          <MailCheck size={26} color={colors.brand} />
         </View>
         <AppText variant="heading20" align="center">
           {sent ? 'Bağlantı gönderildi' : 'Güvenli şifre yenileme'}
@@ -76,7 +76,7 @@ export function ChangePasswordScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   screen: { padding: spacing.md, gap: spacing.xl },
   header: {
-    height: 52,
+    height: 48,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -92,9 +92,9 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   icon: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: colors.brandSoft,
     alignItems: 'center',
     justifyContent: 'center',

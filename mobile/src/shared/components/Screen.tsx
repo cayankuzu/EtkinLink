@@ -4,6 +4,7 @@ import type { PropsWithChildren, Ref } from 'react';
 import { useState } from 'react';
 import type { ScrollViewProps, StyleProp, ViewStyle } from 'react-native';
 import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import type { Edge } from 'react-native-safe-area-context';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 type ScreenProps = PropsWithChildren<{
@@ -14,8 +15,12 @@ type ScreenProps = PropsWithChildren<{
   onRefresh?: () => void | Promise<void>;
   refreshEnabled?: boolean;
   scrollRef?: Ref<ScrollView>;
+  safeAreaEdges?: Edge[];
   testID?: string;
 }>;
+
+const defaultSafeAreaEdges: Edge[] = ['top', 'right', 'bottom', 'left'];
+export const mainTabSafeAreaEdges: Edge[] = ['top', 'right', 'left'];
 
 export function Screen({
   scroll = false,
@@ -25,6 +30,7 @@ export function Screen({
   onRefresh,
   refreshEnabled = true,
   scrollRef,
+  safeAreaEdges = defaultSafeAreaEdges,
   testID,
   children,
 }: ScreenProps) {
@@ -48,7 +54,7 @@ export function Screen({
     return (
       <SafeAreaView
         style={styles.safeArea}
-        edges={['top', 'left', 'right']}
+        edges={safeAreaEdges}
         testID={testID}
       >
         <ScrollView
@@ -74,11 +80,7 @@ export function Screen({
     );
   }
   return (
-    <SafeAreaView
-      style={styles.safeArea}
-      edges={['top', 'left', 'right']}
-      testID={testID}
-    >
+    <SafeAreaView style={styles.safeArea} edges={safeAreaEdges} testID={testID}>
       <View style={[styles.content, contentStyle]}>{children}</View>
     </SafeAreaView>
   );

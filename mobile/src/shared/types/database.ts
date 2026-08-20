@@ -182,6 +182,7 @@ export type Database = {
         read_receipts_enabled: boolean;
         online_status_enabled: boolean;
         typing_indicator_enabled: boolean;
+        notifications_enabled: boolean;
         created_at: string;
         updated_at: string;
       }>;
@@ -199,6 +200,63 @@ export type Database = {
         user_id: string;
         last_read_at: string;
         updated_at: string;
+      }>;
+      notification_preferences: Table<{
+        user_id: string;
+        direct_messages_enabled: boolean;
+        room_messages_enabled: boolean;
+        likes_enabled: boolean;
+        matches_enabled: boolean;
+        event_reminders_enabled: boolean;
+        system_enabled: boolean;
+        created_at: string;
+        updated_at: string;
+      }>;
+      push_tokens: Table<{
+        id: string;
+        user_id: string;
+        expo_push_token: string;
+        platform: 'android' | 'ios';
+        project_id: string;
+        app_version: string | null;
+        last_seen_at: string;
+        disabled_at: string | null;
+        created_at: string;
+        updated_at: string;
+      }>;
+      notification_events: Table<{
+        id: string;
+        user_id: string;
+        actor_user_id: string | null;
+        kind:
+          | 'new_like'
+          | 'new_match'
+          | 'direct_message'
+          | 'room_message'
+          | 'match_ended'
+          | 'blocked'
+          | 'unblocked'
+          | 'event_reminder'
+          | 'system';
+        route_kind: 'match' | 'room' | 'likes' | 'event' | null;
+        route_id: string | null;
+        title: string;
+        body: string;
+        payload: Json;
+        channel_id: 'messages' | 'rooms' | 'matches' | 'events' | 'system';
+        dedupe_key: string;
+        delivery_status:
+          | 'pending'
+          | 'processing'
+          | 'sent'
+          | 'failed'
+          | 'cancelled';
+        attempt_count: number;
+        next_attempt_at: string;
+        last_error_code: string | null;
+        delivered_at: string | null;
+        read_at: string | null;
+        created_at: string;
       }>;
     };
     Views: Record<string, never>;
@@ -277,6 +335,29 @@ export type Database = {
           target_match_id?: string | null;
         };
         Returns: Json | null;
+      };
+      get_chat_match_context: {
+        Args: { target_match_id: string };
+        Returns: Array<{
+          match_id: string;
+          event_id: string;
+          event_title: string;
+          other_user_id: string;
+          other_full_name: string | null;
+          other_username: string | null;
+          other_age: number | null;
+          other_gender: ProfileGender | null;
+          other_bio: string | null;
+          other_city: string | null;
+          match_status: 'active' | 'ended' | 'blocked';
+          match_created_at: string;
+          last_message: string | null;
+          last_message_at: string | null;
+          blocked_by_me: boolean;
+          photo_ids: string[];
+          photo_storage_paths: string[];
+          photo_positions: number[];
+        }>;
       };
       swipe_event_candidate: {
         Args: {
@@ -525,6 +606,19 @@ export type Database = {
         }>;
       };
       mark_room_read: { Args: { target_event_id: string }; Returns: undefined };
+      register_push_token: {
+        Args: {
+          expo_token: string;
+          token_platform: 'android' | 'ios';
+          project_id: string;
+          app_version?: string | null;
+        };
+        Returns: undefined;
+      };
+      unregister_push_token: {
+        Args: { expo_token: string };
+        Returns: undefined;
+      };
       list_matches: {
         Args: {
           status_filter?: string;

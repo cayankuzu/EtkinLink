@@ -61,9 +61,13 @@ function dateRange(date: EventFilters['date']): {
   return { startAt: null, endAt: null };
 }
 
-async function invokeApi<T>(body: Record<string, unknown>): Promise<T> {
+async function invokeApi<T>(
+  body: Record<string, unknown>,
+  signal?: AbortSignal,
+): Promise<T> {
   const { data, error } = await supabase.functions.invoke<T>('etkinlik-api', {
     body,
+    signal,
   });
   if (error) {
     const context = (error as { context?: unknown }).context;
@@ -149,17 +153,23 @@ export async function searchApiEvents(
   };
 }
 
-export async function getApiEvent(eventId: string): Promise<Event> {
+export async function getApiEvent(
+  eventId: string,
+  signal?: AbortSignal,
+): Promise<Event> {
   const cached = eventCache.get(eventId);
   if (cached?.description && cached.sourceDetails) return cached;
   const externalId = Number(eventId.replace(/^etkinlik-io-/, ''));
   if (!Number.isInteger(externalId) || externalId < 1) {
     throw new Error('Etkinlik.io etkinlik kimliği geçersiz.');
   }
-  const response = await invokeApi<{ event: Event }>({
-    action: 'detail',
-    eventId: externalId,
-  });
+  const response = await invokeApi<{ event: Event }>(
+    {
+      action: 'detail',
+      eventId: externalId,
+    },
+    signal,
+  );
   eventCache.set(response.event.id, response.event);
   return response.event;
 }

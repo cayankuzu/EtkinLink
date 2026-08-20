@@ -1,4 +1,5 @@
 import { paginationLimits } from '@shared/constants/limits';
+import { applyAbortSignal } from '@shared/lib/network';
 import { getSignedProfilePhotoUrls } from '@shared/lib/profilePhotoUrls';
 import { supabase } from '@shared/lib/supabase';
 import type { Database } from '@shared/types/database';
@@ -53,16 +54,20 @@ function mapListMatch(
 export async function listMatches(
   filter: 'all' | 'unread' | 'read' | 'ended' | 'blocked',
   cursor: { activityAt: string; matchId: string } | null = null,
+  signal?: AbortSignal,
 ): Promise<{
   items: Match[];
   nextCursor: { activityAt: string; matchId: string } | null;
 }> {
-  const { data, error } = await supabase.rpc('list_matches', {
-    status_filter: filter,
-    page_size: paginationLimits.conversations,
-    cursor_activity_at: cursor?.activityAt ?? null,
-    cursor_match_id: cursor?.matchId ?? null,
-  });
+  const { data, error } = await applyAbortSignal(
+    supabase.rpc('list_matches', {
+      status_filter: filter,
+      page_size: paginationLimits.conversations,
+      cursor_activity_at: cursor?.activityAt ?? null,
+      cursor_match_id: cursor?.matchId ?? null,
+    }),
+    signal,
+  );
   if (error) throw error;
   const photoUrls = await getSignedProfilePhotoUrls(
     data.flatMap(row =>
@@ -79,93 +84,58 @@ export async function listMatches(
   };
 }
 
-export async function getMatch(matchId: string): Promise<Match> {
-  const { data: authData, error: authError } = await supabase.auth.getUser();
-  if (authError || !authData.user)
-    throw authError ?? new Error('Oturum gerekli.');
-  const { data: match, error: matchError } = await supabase
-    .from('matches')
-    .select('*')
-    .eq('id', matchId)
-    .single();
-  if (matchError) throw matchError;
-  const otherId =
-    match.user1_id === authData.user.id ? match.user2_id : match.user1_id;
-  const [
-    { data: profileRows, error: profileError },
-    { data: event, error: eventError },
-    { data: photos, error: photosError },
-    { data: summary, error: summaryError },
-    { data: ownBlock, error: blockError },
-  ] = await Promise.all([
-    supabase.rpc('get_profile_view', { target_profile_id: otherId }),
-    supabase
-      .from('events')
-      .select('id,title')
-      .eq('id', match.event_id)
-      .single(),
-    supabase
-      .from('profile_photos')
-      .select('*')
-      .eq('user_id', otherId)
-      .order('position'),
-    supabase
-      .from('chat_pair_summaries')
-      .select('*')
-      .eq('match_id', matchId)
-      .maybeSingle(),
-    supabase
-      .from('user_blocks')
-      .select('blocked_id')
-      .eq('blocker_id', authData.user.id)
-      .eq('blocked_id', otherId)
-      .maybeSingle(),
-  ]);
-  if (profileError) throw profileError;
-  if (eventError) throw eventError;
-  if (photosError) throw photosError;
-  if (summaryError) throw summaryError;
-  if (blockError) throw blockError;
-  const profile = profileRows[0];
-  if (!profile) throw new Error('Profil bulunamadı.');
+export async function getMatch(
+  matchId: string,
+  signal?: AbortSignal,
+): Promise<Match> {
+  const { data, error } = await applyAbortSignal(
+    supabase.rpc('get_chat_match_context', {
+      target_match_id: matchId,
+    }),
+    signal,
+  );
+  if (error) throw error;
+  const context = data[0];
+  if (!context) throw new Error('Eşleşme bulunamadı.');
   const photoUrls = await getSignedProfilePhotoUrls(
-    photos.map(photo => photo.storage_path),
+    context.photo_storage_paths,
   );
   return {
-    id: match.id,
-    eventId: event.id,
-    eventTitle: event.title,
+    id: context.match_id,
+    eventId: context.event_id,
+    eventTitle: context.event_title,
     otherUser: {
-      id: profile.id,
-      fullName: profile.full_name ?? 'EtkinLink kullanıcısı',
-      username: profile.username ?? 'kullanici',
-      age: profile.age,
-      gender: profile.gender,
-      bio: profile.bio ?? '',
-      city: profile.city ?? '',
-      joinedAt: match.created_at,
-      photos: photos.flatMap(photo => {
-        const url = photoUrls.get(photo.storage_path);
-        return url
-          ? [
-              {
-                id: photo.id,
-                userId: photo.user_id,
-                storagePath: photo.storage_path,
-                position: photo.position,
-                url,
-              },
-            ]
-          : [];
+      id: context.other_user_id,
+      fullName: context.other_full_name ?? 'EtkinLink kullanıcısı',
+      username: context.other_username ?? 'kullanici',
+      age: context.other_age,
+      gender: context.other_gender,
+      bio: context.other_bio ?? '',
+      city: context.other_city ?? '',
+      joinedAt: context.match_created_at,
+      photos: context.photo_storage_paths.flatMap((storagePath, index) => {
+        const url = photoUrls.get(storagePath);
+        const id = context.photo_ids[index];
+        const position = context.photo_positions[index];
+        if (!url || !id || position === undefined) return [];
+        return [
+          {
+            id,
+            userId: context.other_user_id,
+            storagePath,
+            position,
+            url,
+          },
+        ];
       }),
       interests: [],
     },
-    status: match.status,
-    createdAt: match.created_at,
-    lastMessage: summary?.last_message ?? null,
-    lastMessageAt: summary?.last_message_at ?? null,
+    status: context.match_status,
+    createdAt: context.match_created_at,
+    lastMessage: context.last_message,
+    lastMessageAt: context.last_message_at,
     unreadCount: 0,
-    blockedByMe: Boolean(ownBlock),
+    blockedByMe: context.blocked_by_me,
   };
 }
 
@@ -186,6 +156,7 @@ function mapMessage(row: DirectMessageRow): DirectMessage {
 export async function listDirectMessages(
   matchId: string,
   cursor: { createdAt: string; id: string } | null = null,
+  signal?: AbortSignal,
 ): Promise<{
   items: DirectMessage[];
   nextCursor: { createdAt: string; id: string } | null;
@@ -201,7 +172,7 @@ export async function listDirectMessages(
     query = query.or(
       `created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`,
     );
-  const { data, error } = await query;
+  const { data, error } = await applyAbortSignal(query, signal);
   if (error) throw error;
   const last = data.at(-1);
   return {

@@ -2,6 +2,7 @@ import type { ProfileStackParamList } from '@app/navigation/types';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   AppButton,
+  AppImage,
   AppText,
   ErrorState,
   IconButton,
@@ -12,12 +13,13 @@ import {
 } from '@shared/components';
 import { toAppError } from '@shared/lib/errors';
 import { getSignedProfilePhotoUrls } from '@shared/lib/profilePhotoUrls';
+import { queryKeys } from '@shared/lib/queryKeys';
 import { supabase } from '@shared/lib/supabase';
 import { colors, radius, spacing } from '@shared/theme';
 import { FlashList } from '@shopify/flash-list';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react-native';
-import { Alert, Image, RefreshControl, StyleSheet, View } from 'react-native';
+import { Alert, RefreshControl, StyleSheet, View } from 'react-native';
 
 type Props = NativeStackScreenProps<ProfileStackParamList, 'BlockedUsers'>;
 type Blocked = {
@@ -38,7 +40,7 @@ type BlockedUserRow = {
 export function BlockedUsersScreen({ navigation }: Props) {
   const queryClient = useQueryClient();
   const blocked = useQuery({
-    queryKey: ['blocked-users'],
+    queryKey: queryKeys.profile.blockedUsers,
     queryFn: async (): Promise<Blocked[]> => {
       const { data, error: blockError } = await supabase.rpc(
         'list_blocked_users',
@@ -68,7 +70,9 @@ export function BlockedUsersScreen({ navigation }: Props) {
       if (error) throw error;
     },
     onSuccess: () =>
-      void queryClient.invalidateQueries({ queryKey: ['blocked-users'] }),
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.profile.blockedUsers,
+      }),
   });
   if (blocked.isLoading)
     return (
@@ -120,7 +124,7 @@ export function BlockedUsersScreen({ navigation }: Props) {
           renderItem={({ item }) => (
             <View style={styles.row}>
               {item.photo ? (
-                <Image source={{ uri: item.photo }} style={styles.avatar} />
+                <AppImage uri={item.photo} style={styles.avatar} />
               ) : (
                 <View style={styles.avatar} />
               )}
@@ -170,7 +174,7 @@ export function BlockedUsersScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   screen: { padding: spacing.md, gap: spacing.md },
   header: {
-    height: 52,
+    height: 48,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

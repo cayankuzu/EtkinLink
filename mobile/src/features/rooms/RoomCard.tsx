@@ -8,6 +8,7 @@ import { CalendarDays, LockKeyhole, MessageCircle } from 'lucide-react-native';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { EventImage } from '../events/EventImage';
+import { formatPostEventRemaining } from './roomRules';
 import type { RoomState, RoomSummary } from './roomTypes';
 
 const stateLabels: Record<
@@ -32,7 +33,7 @@ const stateLabels: Record<
     tone: 'success',
   },
   postEvent: {
-    label: 'Son 3 Gün',
+    label: 'Etkinlik sonrası',
     description: 'Etkinlik sonrası sohbet açık',
     background: colors.warningSoft,
     tone: 'primary',
@@ -47,12 +48,21 @@ const stateLabels: Record<
 
 export function RoomCard({
   room,
+  now,
   onPress,
 }: {
   room: RoomSummary;
+  now: Date;
   onPress: () => void;
 }) {
-  const state = stateLabels[room.state];
+  const baseState = stateLabels[room.state];
+  const state =
+    room.state === 'postEvent'
+      ? {
+          ...baseState,
+          label: formatPostEventRemaining(room.startAt, room.endAt, now),
+        }
+      : baseState;
   return (
     <Pressable
       accessibilityRole="button"
@@ -70,7 +80,7 @@ export function RoomCard({
           <EventImage
             imageUrl={room.imageUrl}
             style={styles.image}
-            iconSize={22}
+            iconSize={20}
           />
         ) : room.state === 'locked' ? (
           <LockKeyhole size={22} color={colors.textTertiary} />
@@ -158,8 +168,8 @@ const styles = StyleSheet.create({
   locked: { opacity: 0.78 },
   pressed: { opacity: 0.75 },
   thumbnail: {
-    width: 72,
-    height: 72,
+    width: 60,
+    height: 60,
     borderRadius: radius.md,
     overflow: 'hidden',
     backgroundColor: colors.surfaceMuted,

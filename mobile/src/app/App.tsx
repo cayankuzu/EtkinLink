@@ -1,10 +1,16 @@
 import { useSessionStore } from '@features/auth/sessionStore';
 import { useAuthBootstrap } from '@features/auth/useAuthBootstrap';
-import { useAppPresence } from '@features/messages/useAppPresence';
 import { AppErrorBoundary } from '@shared/components';
 import { queryClient } from '@shared/lib/queryClient';
+import {
+  publicQueryPersister,
+  queryCacheBuster,
+  queryCacheMaxAgeMs,
+  shouldPersistQueryKey,
+} from '@shared/lib/queryPersistence';
+import { captureAppError, recordPerformance } from '@shared/lib/telemetry';
 import { colors } from '@shared/theme';
-import { QueryClientProvider } from '@tanstack/react-query';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { useFonts } from 'expo-font';
 import { useEffect } from 'react';
 import { Image, StatusBar, StyleSheet, View } from 'react-native';
@@ -12,13 +18,20 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { RootNavigator } from './navigation/RootNavigator';
+import { DeferredAppServices } from './startup/DeferredAppServices';
+
+const appModuleStartedAt = global.performance?.now?.() ?? Date.now();
 
 function Bootstrap() {
   useAuthBootstrap();
   const userId = useSessionStore(state => state.session?.user.id ?? null);
-  useAppPresence(userId);
   useEffect(() => () => queryClient.clear(), []);
-  return <RootNavigator />;
+  return (
+    <>
+      <RootNavigator />
+      <DeferredAppServices userId={userId} />
+    </>
+  );
 }
 
 export default function App() {
@@ -27,16 +40,24 @@ export default function App() {
     Manrope: require('../assets/fonts/Manrope.ttf'),
   });
 
+  useEffect(() => {
+    if (!fontsLoaded) return;
+    recordPerformance(
+      'startup.fonts_ready',
+      (global.performance?.now?.() ?? Date.now()) - appModuleStartedAt,
+    );
+  }, [fontsLoaded]);
+
   if (fontError) throw fontError;
   if (!fontsLoaded) {
     return (
       <View style={styles.loading}>
         <StatusBar barStyle="dark-content" backgroundColor={colors.canvas} />
         <Image
-          source={require('../assets/images/etkinlink-symbol.png')}
+          source={require('../assets/images/etkinlink-logo.png')}
           resizeMode="contain"
           accessibilityLabel="EtkinLink"
-          style={styles.splashIcon}
+          style={styles.splashLogo}
         />
       </View>
     );
@@ -45,14 +66,37 @@ export default function App() {
   return (
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
-        <AppErrorBoundary>
-          <QueryClientProvider client={queryClient}>
+        <AppErrorBoundary
+          onError={(error, info) =>
+            captureAppError(error, { componentStack: info.componentStack })
+          }
+        >
+          <PersistQueryClientProvider
+            client={queryClient}
+            persistOptions={{
+              buster: queryCacheBuster,
+              maxAge: queryCacheMaxAgeMs,
+              persister: publicQueryPersister,
+              dehydrateOptions: {
+                shouldDehydrateQuery: query =>
+                  query.state.status === 'success' &&
+                  shouldPersistQueryKey(query.queryKey),
+              },
+            }}
+            onSuccess={() =>
+              recordPerformance(
+                'startup.cache_restored',
+                (global.performance?.now?.() ?? Date.now()) -
+                  appModuleStartedAt,
+              )
+            }
+          >
             <StatusBar
               barStyle="dark-content"
               backgroundColor={colors.canvas}
             />
             <Bootstrap />
-          </QueryClientProvider>
+          </PersistQueryClientProvider>
         </AppErrorBoundary>
       </SafeAreaProvider>
     </GestureHandlerRootView>
@@ -67,5 +111,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: colors.canvas,
   },
-  splashIcon: { width: 176, height: 176 },
+  splashLogo: { width: 280, height: 220 },
 });

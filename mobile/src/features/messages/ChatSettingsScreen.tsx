@@ -4,6 +4,7 @@ import { AppText, IconButton, Screen } from '@shared/components';
 import { colors, radius, spacing } from '@shared/theme';
 import {
   ArrowLeft,
+  BellRing,
   CircleDot,
   Eye,
   LockKeyhole,
@@ -54,6 +55,11 @@ export function ChatSettingsScreen({ navigation }: Props) {
           icon={MessageSquareText}
           title="Yazıyor bilgisini paylaş"
           description="Yazma bilgisi anlık iletilir ve kalıcı olarak saklanmaz."
+        />
+        <SettingRow
+          icon={BellRing}
+          title="Sohbet bildirimleri"
+          description="Bu eşleşmeden gelen yeni mesajlar ve sohbet durumu değişiklikleri bildirilir."
           last
         />
       </View>
@@ -106,7 +112,7 @@ function SettingRow({
 const styles = StyleSheet.create({
   screen: { padding: spacing.md, gap: spacing.md },
   header: {
-    height: 52,
+    height: 48,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

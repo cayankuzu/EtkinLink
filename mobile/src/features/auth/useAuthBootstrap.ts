@@ -4,14 +4,14 @@ import { useEffect } from 'react';
 import { Linking } from 'react-native';
 
 import { exchangeAuthCode } from './authService';
-import {
-  checkPendingVerification,
-  getPendingVerificationEmail,
-} from './pendingVerificationService';
+import { getPendingVerificationEmail } from './pendingVerificationService';
 import { useSessionStore } from './sessionStore';
 
 export function useAuthBootstrap(): void {
   const setSession = useSessionStore(state => state.setSession);
+  const beginPasswordRecovery = useSessionStore(
+    state => state.beginPasswordRecovery,
+  );
   const setPendingVerificationEmail = useSessionStore(
     state => state.setPendingVerificationEmail,
   );
@@ -22,27 +22,20 @@ export function useAuthBootstrap(): void {
 
     function applySession(session: Parameters<typeof setSession>[0]): void {
       if (session) void supabase.realtime.setAuth(session.access_token);
+      if (session && useSessionStore.getState().phase === 'recovery') return;
       void setSession(session).catch(error => {
         console.warn('Oturum durumu uygulanamadı.', toAppError(error).code);
       });
     }
 
     async function handleUrl(url: string | null): Promise<void> {
-      if (!url?.startsWith('etkinlink://auth/')) return;
+      if (!url) return;
       try {
-        const parsed = new URL(url);
-        if (parsed.searchParams.get('verified') === '1') {
-          const email = await getPendingVerificationEmail();
-          if (email) {
-            const result = await checkPendingVerification(email);
-            if (result === 'verified' && active) {
-              setPendingVerificationEmail(null);
-            }
-          }
-          return;
+        const result = await exchangeAuthCode(url);
+        if (result === 'ignored') return;
+        if (result === 'session' && active) {
+          setPendingVerificationEmail(null);
         }
-        if (parsed.searchParams.get('updated') === '1') return;
-        await exchangeAuthCode(url);
       } catch (error) {
         console.warn(
           'Kimlik doğrulama bağlantısı işlenemedi.',
@@ -51,7 +44,6 @@ export function useAuthBootstrap(): void {
       }
     }
 
-    void Linking.getInitialURL().then(handleUrl);
     const linkSubscription = Linking.addEventListener('url', event => {
       void handleUrl(event.url);
     });
@@ -60,17 +52,24 @@ export function useAuthBootstrap(): void {
       if (active) setPendingVerificationEmail(email);
     });
 
-    void supabase.auth.getSession().then(({ data }) => {
-      if (!active) return;
-      applySession(data.session);
-    });
-
     const { data: authSubscription } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
+      (event, session) => {
         if (!active) return;
+        if (event === 'PASSWORD_RECOVERY' && session) {
+          void supabase.realtime.setAuth(session.access_token);
+          beginPasswordRecovery(session);
+          return;
+        }
         applySession(session);
       },
     );
+
+    void (async () => {
+      await handleUrl(await Linking.getInitialURL());
+      const { data } = await supabase.auth.getSession();
+      if (!active || useSessionStore.getState().phase === 'recovery') return;
+      applySession(data.session);
+    })();
 
     return () => {
       active = false;
@@ -78,5 +77,5 @@ export function useAuthBootstrap(): void {
       linkSubscription.remove();
       authSubscription.subscription.unsubscribe();
     };
-  }, [setPendingVerificationEmail, setSession]);
+  }, [beginPasswordRecovery, setPendingVerificationEmail, setSession]);
 }

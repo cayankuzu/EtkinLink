@@ -73,6 +73,7 @@ yarn-error.log
 # Local build outputs
 /android/app/build/
 /android/build/
+/.android-tools/
 
 # Yarn
 .yarn/*

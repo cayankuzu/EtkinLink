@@ -8,6 +8,7 @@ import {
   Skeleton,
 } from '@shared/components';
 import { toAppError } from '@shared/lib/errors';
+import { queryKeys } from '@shared/lib/queryKeys';
 import { supabase } from '@shared/lib/supabase';
 import { colors, radius, spacing } from '@shared/theme';
 import type { Profile, VisibilityLevel } from '@shared/types/domain';
@@ -48,19 +49,18 @@ function useVisibilityMutation(
     mutationFn: (value: VisibilityChoice) =>
       updateVisibility(databaseField, value),
     onMutate: async value => {
-      await queryClient.cancelQueries({ queryKey: ['profile', 'current'] });
-      const previous = queryClient.getQueryData<Profile>([
-        'profile',
-        'current',
-      ])?.[profileField];
-      queryClient.setQueryData<Profile>(['profile', 'current'], current =>
+      await queryClient.cancelQueries({ queryKey: queryKeys.profile.current });
+      const previous = queryClient.getQueryData<Profile>(
+        queryKeys.profile.current,
+      )?.[profileField];
+      queryClient.setQueryData<Profile>(queryKeys.profile.current, current =>
         current ? { ...current, [profileField]: value } : current,
       );
       return { previous };
     },
     onError: (_error, _value, context) => {
       if (!context?.previous) return;
-      queryClient.setQueryData<Profile>(['profile', 'current'], current =>
+      queryClient.setQueryData<Profile>(queryKeys.profile.current, current =>
         current ? { ...current, [profileField]: context.previous } : current,
       );
     },
@@ -69,7 +69,7 @@ function useVisibilityMutation(
 
 export function ProfileVisibilityScreen({ navigation }: Props) {
   const profile = useQuery({
-    queryKey: ['profile', 'current'],
+    queryKey: queryKeys.profile.current,
     queryFn: () => getProfile(),
   });
   const ageSave = useVisibilityMutation('age_visibility', 'ageVisibility');
@@ -185,7 +185,7 @@ function VisibilityCard({
 const styles = StyleSheet.create({
   screen: { padding: spacing.md, gap: spacing.md },
   header: {
-    height: 52,
+    height: 48,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -202,7 +202,7 @@ const styles = StyleSheet.create({
   },
   cardTitle: { gap: spacing.xs },
   switchRow: {
-    minHeight: 64,
+    minHeight: 56,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,

@@ -1,5 +1,6 @@
 import { ProfilePhotoGallery } from '@features/profile/ProfilePhotoGallery';
 import { AppText, IconButton } from '@shared/components';
+import { getGenderLabel } from '@shared/lib/profileLabels';
 import { colors, radius, shadows, spacing } from '@shared/theme';
 import type { Candidate } from '@shared/types/domain';
 import { CalendarDays, Heart, MapPin, UserRound, X } from 'lucide-react-native';
@@ -11,6 +12,7 @@ type Props = {
   candidate: Candidate;
   eventTitle: string;
   showActions?: boolean;
+  showLikeAction?: boolean;
   onPass?: () => void;
   onLike?: () => void;
   onOpenEvent?: () => void;
@@ -22,6 +24,7 @@ export function CandidateCard({
   candidate,
   eventTitle,
   showActions = true,
+  showLikeAction = true,
   onPass,
   onLike,
   onOpenEvent,
@@ -79,7 +82,7 @@ export function CandidateCard({
             <View style={styles.metaRow}>
               <UserRound size={16} color={colors.textSecondary} />
               <AppText variant="body14" tone="secondary">
-                {candidate.gender}
+                {getGenderLabel(candidate.gender)}
               </AppText>
             </View>
           ) : null}
@@ -101,7 +104,7 @@ export function CandidateCard({
         ) : null}
       </ScrollView>
       {showActions ? (
-        <View style={styles.actions}>
+        <View style={[styles.actions, !showLikeAction && styles.singleAction]}>
           <IconButton
             icon={X}
             label="Geç"
@@ -110,14 +113,16 @@ export function CandidateCard({
             onPress={onPass}
             style={styles.actionButton}
           />
-          <IconButton
-            icon={Heart}
-            label="Beğen"
-            selected
-            disabled={disabled}
-            onPress={onLike}
-            style={styles.actionButton}
-          />
+          {showLikeAction ? (
+            <IconButton
+              icon={Heart}
+              label="Beğen"
+              selected
+              disabled={disabled}
+              onPress={onLike}
+              style={styles.actionButton}
+            />
+          ) : null}
         </View>
       ) : null}
     </View>
@@ -160,7 +165,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   actions: {
-    height: 68,
+    height: 60,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -171,5 +176,6 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
     backgroundColor: colors.surface,
   },
+  singleAction: { justifyContent: 'center' },
   actionButton: { ...shadows.floating },
 });

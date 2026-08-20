@@ -16,9 +16,39 @@ module.exports = {
     'node_modules/(?!((jest-)?react-native|@react-native(-community)?|@react-navigation|@shopify|react-native-reanimated|react-native-safe-area-context|react-native-worklets|uuid)/)',
   ],
   collectCoverageFrom: [
-    'src/features/auth/authSchemas.ts',
-    'src/features/onboarding/onboardingSchemas.ts',
-    'src/features/rooms/roomRules.ts',
-    'src/shared/lib/chatOutbox.ts',
+    'src/**/*.{ts,tsx}',
+    '!src/**/*.test.{ts,tsx}',
+    '!src/**/*.d.ts',
+    '!src/test/**',
+    '!src/assets/**',
+    '!src/shared/types/database.ts',
+    '!src/**/index.ts',
   ],
+  coverageReporters: ['text', 'lcov', 'clover', 'json', 'json-summary'],
+  coverageThreshold: {
+    global: {
+      statements: 36,
+      branches: 27,
+      functions: 26,
+      lines: 37,
+    },
+    'src/shared/lib/chatOutbox.ts': {
+      statements: 90,
+      branches: 90,
+      functions: 90,
+      lines: 90,
+    },
+    'src/features/matching/compatibility.ts': {
+      statements: 90,
+      branches: 80,
+      functions: 90,
+      lines: 90,
+    },
+    'src/features/rooms/roomRules.ts': {
+      statements: 90,
+      branches: 80,
+      functions: 90,
+      lines: 90,
+    },
+  },
 };

@@ -90,7 +90,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.brandSubtle,
   },
   topBar: {
-    height: 52,
+    height: 48,
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -107,7 +107,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   brandImage: { width: 30, height: 30, borderRadius: radius.sm },
-  spacer: { width: 48 },
+  spacer: { width: 44 },
   progressMeta: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -131,8 +131,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   introIcon: {
-    width: 48,
-    height: 48,
+    width: 44,
+    height: 44,
     borderRadius: radius.lg,
     backgroundColor: colors.surface,
     alignItems: 'center',
@@ -142,8 +142,8 @@ const styles = StyleSheet.create({
   },
   introCopy: { flex: 1, gap: spacing.xxs },
   card: {
-    gap: spacing.md,
-    padding: spacing.lg,
+    gap: spacing.sm,
+    padding: spacing.md,
     borderRadius: radius.xxl,
     borderWidth: 1,
     borderColor: colors.border,

@@ -5,8 +5,14 @@ import type {
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { useScrollToTop } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { ErrorState, Screen, Skeleton } from '@shared/components';
+import {
+  ErrorState,
+  mainTabSafeAreaEdges,
+  Screen,
+  Skeleton,
+} from '@shared/components';
 import { toAppError } from '@shared/lib/errors';
+import { queryKeys } from '@shared/lib/queryKeys';
 import { supabase } from '@shared/lib/supabase';
 import { spacing } from '@shared/theme';
 import { useQuery } from '@tanstack/react-query';
@@ -23,7 +29,7 @@ export function ProfileScreen({ navigation }: Props) {
   useScrollToTop(scrollRef);
   const [selected, setSelected] = useState<'upcoming' | 'attended'>('upcoming');
   const user = useQuery({
-    queryKey: ['current-user-id'],
+    queryKey: queryKeys.profile.currentUserId,
     queryFn: async () => {
       const { data, error } = await supabase.auth.getUser();
       if (error || !data.user) throw error ?? new Error('Oturum gerekli.');
@@ -31,17 +37,17 @@ export function ProfileScreen({ navigation }: Props) {
     },
   });
   const profile = useQuery({
-    queryKey: ['profile', user.data],
+    queryKey: queryKeys.profile.byId(user.data),
     queryFn: () => getProfile(user.data),
     enabled: Boolean(user.data),
   });
   const upcoming = useQuery({
-    queryKey: ['profile-events', user.data, 'upcoming'],
+    queryKey: queryKeys.profile.events(user.data, 'upcoming'),
     queryFn: () => listProfileEvents(user.data ?? '', 'upcoming'),
     enabled: Boolean(user.data),
   });
   const attended = useQuery({
-    queryKey: ['profile-events', user.data, 'attended'],
+    queryKey: queryKeys.profile.events(user.data, 'attended'),
     queryFn: () => listProfileEvents(user.data ?? '', 'attended'),
     enabled: Boolean(user.data),
   });
@@ -69,6 +75,7 @@ export function ProfileScreen({ navigation }: Props) {
         contentStyle={styles.screen}
         refreshing={refreshing}
         onRefresh={refreshProfile}
+        safeAreaEdges={mainTabSafeAreaEdges}
       >
         <Skeleton style={styles.gallery} />
         <Skeleton style={styles.body} />
@@ -81,6 +88,7 @@ export function ProfileScreen({ navigation }: Props) {
         scrollRef={scrollRef}
         refreshing={refreshing}
         onRefresh={refreshProfile}
+        safeAreaEdges={mainTabSafeAreaEdges}
       >
         <ErrorState
           title="Profil yüklenemedi"
@@ -100,6 +108,7 @@ export function ProfileScreen({ navigation }: Props) {
       contentStyle={styles.screen}
       refreshing={refreshing}
       onRefresh={refreshProfile}
+      safeAreaEdges={mainTabSafeAreaEdges}
     >
       <ProfileView
         profile={profile.data}

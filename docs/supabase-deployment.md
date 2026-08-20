@@ -4,7 +4,7 @@ Bu belge secret değerlerini içermez. Secret'ları sohbete veya kaynak koda yap
 
 ## Migration
 
-2026-08-06 itibarıyla bağlı EtkinLink projesinde 13 migration uygulanmıştır; yerel/remote geçmiş eşleşir ve `db lint` hata veya uyarı döndürmez.
+2026-08-19 itibarıyla repoda 46 migration bulunur. Push worker hardening, kayıt gizliliği ve mesaj rate-limit migration'ları henüz linked ortama uygulanmış sayılmaz. Deploy öncesinde yerel/remote migration geçmişi eşitliği, `db lint` ve pgTAP paketi yeniden çalıştırılmalı; geçmiş bir doğrulama sonucu güncel durum gibi sunulmamalıdır.
 
 ```powershell
 npx supabase login
@@ -15,6 +15,12 @@ npx supabase db lint --linked --level warning
 ```
 
 Pooler bağlantısı zaman aşımına uğrarsa Supabase Dashboard'da projenin aktif olduğunu ve `Database > Connect` altında pooler'ın erişilebilir olduğunu doğrula; ardından farklı ağ/VPN kapalıyken tekrar dene. Database password komut satırına yazılmamalı; CLI'nin güvenli istemine girilmelidir.
+
+CI güvenlik testi Docker kullanmaz. `staging-security` environment'ındaki `STAGING_DATABASE_URL` ve `STAGING_PROJECT_REF` ile staging şeması üzerinde `db lint` ve transaction içinde pgTAP çalıştırılır; production project ref'i güvenlik guardı tarafından reddedilir.
+
+## Push worker Vault yapılandırması
+
+Her ortamda Vault'a `edge_functions_base_url` ve en az 32 karakterlik `push_worker_secret` eklenir. Aynı worker secret iki Edge Function'a secret olarak verilir; `push-dispatch` ve `push-receipts` deploy edilir. URL kaynak koda veya migration'a sabitlenmez. Staging ve production aynı secret'ı paylaşmaz. Ayrıntılı rotasyon ve geri alma adımları [push operasyonları](push-operations.md) belgesindedir.
 
 ## Event.io aktarımı
 

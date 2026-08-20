@@ -5,6 +5,7 @@ import type { Database } from '@shared/types/database';
 import { createClient } from '@supabase/supabase-js';
 import { AppState } from 'react-native';
 
+import { fetchWithTimeout } from './network';
 import { secureStorage } from './secureStorage';
 
 export const supabase = createClient<Database>(
@@ -20,6 +21,9 @@ export const supabase = createClient<Database>(
     },
     realtime: {
       params: { eventsPerSecond: 8 },
+    },
+    global: {
+      fetch: fetchWithTimeout,
     },
   },
 );

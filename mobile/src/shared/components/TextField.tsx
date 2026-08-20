@@ -64,7 +64,7 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(
         >
           {LeadingIcon ? (
             <View style={styles.leadingIcon} pointerEvents="none">
-              <LeadingIcon size={20} color={iconColor} strokeWidth={2} />
+              <LeadingIcon size={18} color={iconColor} strokeWidth={2} />
             </View>
           ) : null}
           <TextInput
@@ -77,6 +77,7 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(
             selectionColor={colors.brand}
             accessibilityLabel={label}
             accessibilityHint={hint}
+            accessibilityState={{ disabled }}
             onFocus={event => {
               setFocused(true);
               onFocus?.(event);
@@ -103,15 +104,18 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(
               style={styles.action}
             >
               {hidden ? (
-                <Eye size={20} color={colors.textSecondary} />
+                <Eye size={18} color={colors.textSecondary} />
               ) : (
-                <EyeOff size={20} color={colors.textSecondary} />
+                <EyeOff size={18} color={colors.textSecondary} />
               )}
             </Pressable>
           ) : null}
         </View>
         {error || hint ? (
-          <View style={styles.meta}>
+          <View
+            style={styles.meta}
+            accessibilityLiveRegion={error ? 'polite' : 'none'}
+          >
             <AppText
               variant="caption12"
               tone={error ? 'danger' : 'tertiary'}
@@ -135,7 +139,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   field: {
-    minHeight: 54,
+    minHeight: layout.inputHeight,
     borderWidth: 1,
     borderColor: colors.borderStrong,
     borderRadius: radius.lg,
@@ -158,19 +162,19 @@ const styles = StyleSheet.create({
   input: {
     ...typography.body16,
     color: colors.textPrimary,
-    minHeight: layout.touchTarget,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    minHeight: layout.inputHeight,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
   },
-  inputWithLeadingIcon: { paddingLeft: 48 },
-  inputWithAction: { paddingRight: 52 },
+  inputWithLeadingIcon: { paddingLeft: 42 },
+  inputWithAction: { paddingRight: 46 },
   inputDisabled: { color: colors.textSecondary },
   leadingIcon: {
     position: 'absolute',
-    left: spacing.md,
+    left: spacing.sm,
     zIndex: 1,
-    width: 20,
-    height: 20,
+    width: 18,
+    height: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },

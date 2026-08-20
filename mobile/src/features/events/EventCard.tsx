@@ -1,8 +1,8 @@
-import { AppText } from '@shared/components';
+import { AppImage, AppText } from '@shared/components';
 import { colors, radius, shadows, spacing } from '@shared/theme';
 import type { Event } from '@shared/types/domain';
 import { Bookmark, MapPin, UsersRound } from 'lucide-react-native';
-import { Image, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { EventImage } from './EventImage';
 import { inferEventCity } from './rssEventService';
@@ -82,9 +82,9 @@ export function EventCard({
             {attendeePhotoUrls.length > 0 ? (
               <View style={styles.avatarStack}>
                 {attendeePhotoUrls.slice(0, 3).map((url, index) => (
-                  <Image
+                  <AppImage
                     key={url}
-                    source={{ uri: url }}
+                    uri={url}
                     style={[styles.avatar, index > 0 && styles.avatarOverlap]}
                   />
                 ))}
@@ -145,7 +145,7 @@ function SaveButton({
       ]}
     >
       <Bookmark
-        size={19}
+        size={17}
         color={event.saved ? colors.textInverse : colors.textSecondary}
         fill={event.saved ? colors.textInverse : colors.transparent}
       />
@@ -166,13 +166,13 @@ const styles = StyleSheet.create({
   actionPressed: { opacity: 0.72 },
   imageWrap: {
     width: '100%',
-    aspectRatio: 2.45,
+    aspectRatio: 2.75,
     backgroundColor: colors.surfaceMuted,
   },
   image: { width: '100%', height: '100%' },
   saveButton: {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
     borderRadius: radius.full,
     borderWidth: 1,
     borderColor: colors.border,
@@ -184,7 +184,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.brand,
     borderColor: colors.brand,
   },
-  content: { padding: spacing.sm, gap: 6 },
+  content: { padding: spacing.sm, gap: 4 },
   topMeta: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -201,7 +201,7 @@ const styles = StyleSheet.create({
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   locationText: { flex: 1 },
   footer: {
-    minHeight: 30,
+    minHeight: 28,
     marginTop: 2,
     paddingTop: spacing.xs,
     borderTopWidth: 1,

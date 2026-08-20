@@ -1,4 +1,5 @@
 import { paginationLimits } from '@shared/constants/limits';
+import { applyAbortSignal } from '@shared/lib/network';
 import { getSignedProfilePhotoUrls } from '@shared/lib/profilePhotoUrls';
 import { supabase } from '@shared/lib/supabase';
 import type { Database } from '@shared/types/database';
@@ -71,10 +72,16 @@ function mapEvent(row: EventReadRow): Event {
   };
 }
 
-async function getDatabaseEvent(eventId: string): Promise<Event> {
-  const { data, error } = await supabase.rpc('get_event_detail', {
-    target_event_id: eventId,
-  });
+async function getDatabaseEvent(
+  eventId: string,
+  signal?: AbortSignal,
+): Promise<Event> {
+  const { data, error } = await applyAbortSignal(
+    supabase.rpc('get_event_detail', {
+      target_event_id: eventId,
+    }),
+    signal,
+  );
   if (error) throw error;
   const row = data[0];
   if (!row) throw new Error('Etkinlik bulunamadı.');
@@ -333,31 +340,37 @@ export async function listEventCategories(): Promise<string[]> {
   }
 }
 
-export async function getEvent(eventId: string): Promise<Event> {
+export async function getEvent(
+  eventId: string,
+  signal?: AbortSignal,
+): Promise<Event> {
   if (isRssEventId(eventId)) {
     let source: Event;
     try {
-      source = await getApiEvent(eventId);
+      source = await getApiEvent(eventId, signal);
     } catch {
       source = await getRssEventPreview(eventId);
     }
     try {
       const databaseId = await resolveEventDatabaseId(source);
-      return mergeSourceEvent(source, await getDatabaseEvent(databaseId));
+      return mergeSourceEvent(
+        source,
+        await getDatabaseEvent(databaseId, signal),
+      );
     } catch {
       try {
-        return await getApiEvent(eventId);
+        return await getApiEvent(eventId, signal);
       } catch {
         return getRssEvent(eventId);
       }
     }
   }
-  const database = await getDatabaseEvent(eventId);
+  const database = await getDatabaseEvent(eventId, signal);
   if (database.externalId === null) return database;
   try {
     let source: Event;
     try {
-      source = await getApiEvent(`etkinlik-io-${database.externalId}`);
+      source = await getApiEvent(`etkinlik-io-${database.externalId}`, signal);
     } catch {
       source = await getRssEvent(`etkinlik-io-${database.externalId}`);
     }

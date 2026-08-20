@@ -1,0 +1,90 @@
+appId: com.etkinlink.app
+name: Etkinlik, eşleşme ve mesajlaşma kritik UI akışları
+tags:
+  - events
+  - matching
+  - messaging
+  - rooms
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible:
+      id: welcome-sign-in
+    timeout: 20000
+- tapOn:
+    id: welcome-sign-in
+- tapOn:
+    id: sign-in-email
+- inputText: ${E2E_EMAIL}
+- tapOn:
+    id: sign-in-password
+- inputText: ${E2E_PASSWORD}
+- hideKeyboard
+- tapOn:
+    id: sign-in-submit
+- extendedWaitUntil:
+    visible:
+      id: discover-screen
+    timeout: 30000
+- tapOn: ${E2E_EVENT_TITLE} etkinliğini aç
+- extendedWaitUntil:
+    visible:
+      id: event-detail-screen
+    timeout: 15000
+- runFlow:
+    when:
+      visible: Etkinlikten ayrıl
+    commands:
+      - tapOn: Etkinlikten ayrıl
+- runFlow:
+    when:
+      visible: Etkinliğe katıl
+    commands:
+      - tapOn: Etkinliğe katıl
+      - tapOn: Katıl
+- assertVisible: Odaya git
+- assertVisible: Eşleşmeye git
+- tapOn: Eşleşmeye git
+- extendedWaitUntil:
+    visible: Eşleşme
+    timeout: 15000
+- runFlow:
+    when:
+      visible: Eşleşmeyi aktifleştir
+    commands:
+      - tapOn: Eşleşmeyi aktifleştir
+      - tapOn: Eşleşmeye başla
+- runFlow:
+    when:
+      visible: Eşleşmeye başla
+    commands:
+      - tapOn: Eşleşmeye başla
+- back
+- back
+- tapOn: Odalar
+- extendedWaitUntil:
+    visible:
+      id: rooms-screen
+    timeout: 15000
+- tapOn: ${E2E_ROOM_TITLE} etkinlik odası.*
+- extendedWaitUntil:
+    visible:
+      id: room-detail-screen
+    timeout: 15000
+- tapOn: Odaya mesaj yaz
+- inputText: ${E2E_ROOM_MESSAGE}
+- hideKeyboard
+- tapOn: Mesajı gönder
+- assertVisible: ${E2E_ROOM_MESSAGE}
+- tapOn: Mesajlar
+- extendedWaitUntil:
+    visible:
+      id: messages-screen
+    timeout: 15000
+- tapOn: ${E2E_MATCH_NAME} özel sohbetini aç
+- tapOn: Özel mesaj yaz
+- inputText: ${E2E_DIRECT_MESSAGE}
+- hideKeyboard
+- tapOn: Mesajı gönder
+- assertVisible: ${E2E_DIRECT_MESSAGE}

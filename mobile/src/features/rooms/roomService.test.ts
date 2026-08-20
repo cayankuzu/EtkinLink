@@ -1,6 +1,6 @@
 import { addDays, subDays } from 'date-fns';
 
-import { getRoomState } from './roomRules';
+import { formatPostEventRemaining, getRoomState } from './roomRules';
 
 describe('etkinlik odası zaman penceresi', () => {
   const start = new Date('2026-09-20T18:00:00.000Z');
@@ -45,5 +45,22 @@ describe('etkinlik odası zaman penceresi', () => {
     expect(getRoomState(start.toISOString(), null, addDays(start, 1))).toBe(
       'postEvent',
     );
+  });
+
+  it.each([
+    ['2026-09-20T22:00:00.000Z', 'Son 3 gün'],
+    ['2026-09-21T21:00:00.000Z', 'Son 2 gün'],
+    ['2026-09-22T21:00:00.000Z', 'Son gün'],
+    ['2026-09-23T15:00:00.000Z', 'Son 6 saat'],
+    ['2026-09-23T20:31:00.000Z', 'Son 29 dakika'],
+    ['2026-09-23T20:59:59.500Z', 'Son dakikalar'],
+  ])('kalan sohbet süresini %s anında %s gösterir', (now, expected) => {
+    expect(
+      formatPostEventRemaining(
+        start.toISOString(),
+        end.toISOString(),
+        new Date(now),
+      ),
+    ).toBe(expected);
   });
 });

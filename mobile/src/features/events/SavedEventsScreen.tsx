@@ -10,6 +10,7 @@ import {
   StateView,
 } from '@shared/components';
 import { toAppError } from '@shared/lib/errors';
+import { queryKeys } from '@shared/lib/queryKeys';
 import { colors, spacing } from '@shared/theme';
 import { FlashList } from '@shopify/flash-list';
 import {
@@ -28,7 +29,7 @@ type Props = NativeStackScreenProps<DiscoverStackParamList, 'SavedEvents'>;
 export function SavedEventsScreen({ navigation }: Props) {
   const queryClient = useQueryClient();
   const saved = useInfiniteQuery({
-    queryKey: ['saved-events'],
+    queryKey: queryKeys.events.saved,
     queryFn: ({ pageParam }) => listSavedEvents(pageParam),
     initialPageParam: null as { savedAt: string; eventId: string } | null,
     getNextPageParam: page => page.nextCursor,
@@ -38,8 +39,8 @@ export function SavedEventsScreen({ navigation }: Props) {
     mutationFn: (event: import('@shared/types/domain').Event) =>
       setEventSaved(event, false),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['saved-events'] });
-      void queryClient.invalidateQueries({ queryKey: ['events'] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.events.saved });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
     },
   });
   return (

@@ -64,10 +64,12 @@ export function WelcomeScreen({ navigation }: Props) {
       >
         <AppButton
           label="Giriş Yap"
+          testID="welcome-sign-in"
           onPress={() => navigation.navigate('SignIn')}
         />
         <AppButton
           label="Hesap Oluştur"
+          testID="welcome-sign-up"
           variant="secondary"
           onPress={() => navigation.navigate('SignUp')}
         />

@@ -10,10 +10,14 @@ import { Controller, useForm } from 'react-hook-form';
 import { AuthLayout } from './AuthLayout';
 import { newPasswordSchema, type NewPasswordValues } from './authSchemas';
 import { updatePassword } from './authService';
+import { useSessionStore } from './sessionStore';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'NewPassword'>;
 
-export function NewPasswordScreen({ navigation }: Props) {
+export function NewPasswordScreen(_props: Props) {
+  const completePasswordRecovery = useSessionStore(
+    state => state.completePasswordRecovery,
+  );
   const [message, setMessage] = useState<string | null>(null);
   const {
     control,
@@ -26,7 +30,7 @@ export function NewPasswordScreen({ navigation }: Props) {
   const onSubmit = handleSubmit(async values => {
     try {
       await updatePassword(values.password);
-      navigation.popToTop();
+      completePasswordRecovery();
     } catch (error) {
       setMessage(toAppError(error).message);
     }

@@ -5,10 +5,12 @@ import {
   ErrorState,
   IconButton,
   RefreshableContent,
+  Screen,
   StateView,
 } from '@shared/components';
 import { contentLimits } from '@shared/constants/limits';
 import { toAppError } from '@shared/lib/errors';
+import { queryKeys } from '@shared/lib/queryKeys';
 import { colors, layout, radius, spacing, typography } from '@shared/theme';
 import type { Event } from '@shared/types/domain';
 import { FlashList } from '@shopify/flash-list';
@@ -35,17 +37,17 @@ export function EventSearchScreen({ navigation }: Props) {
   const [query, setQuery] = useState('');
   const normalizedQuery = query.trim();
   const preview = useQuery({
-    queryKey: ['event-search-index', 'preview'],
+    queryKey: queryKeys.events.searchIndexFor('preview'),
     queryFn: loadUniversalEventSearchPreview,
     staleTime: 10 * 60 * 1000,
   });
   const completeIndex = useQuery({
-    queryKey: ['event-search-index', 'complete'],
+    queryKey: queryKeys.events.searchIndexFor('complete'),
     queryFn: loadUniversalEventSearchIndex,
     staleTime: 10 * 60 * 1000,
   });
   const broadIndex = useQuery({
-    queryKey: ['event-search-index', 'broad'],
+    queryKey: queryKeys.events.searchIndexFor('broad'),
     queryFn: loadUniversalEventSearchBroadIndex,
     staleTime: 10 * 60 * 1000,
   });
@@ -75,13 +77,15 @@ export function EventSearchScreen({ navigation }: Props) {
     mutationFn: ({ event, saved }: { event: Event; saved: boolean }) =>
       setEventSaved(event, saved),
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: ['event-search-index'] });
-      void queryClient.invalidateQueries({ queryKey: ['events'] });
-      void queryClient.invalidateQueries({ queryKey: ['saved-events'] });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.events.searchIndex,
+      });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.events.saved });
     },
   });
   return (
-    <View style={styles.screen}>
+    <Screen contentStyle={styles.screen}>
       <View style={styles.header}>
         <IconButton icon={ArrowLeft} label="Geri" onPress={navigation.goBack} />
         <View style={styles.searchBox}>
@@ -187,7 +191,7 @@ export function EventSearchScreen({ navigation }: Props) {
           }
         />
       )}
-    </View>
+    </Screen>
   );
 }
 

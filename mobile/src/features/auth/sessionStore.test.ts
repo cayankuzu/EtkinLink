@@ -67,6 +67,18 @@ describe('oturum yönlendirmesi', () => {
     expect(useSessionStore.getState().phase).toBe('signedIn');
   });
 
+  it('parola kurtarma oturumunu ana uygulamaya erken sokmaz', () => {
+    useSessionStore.getState().beginPasswordRecovery(session);
+
+    expect(useSessionStore.getState()).toMatchObject({
+      phase: 'recovery',
+      session,
+    });
+
+    useSessionStore.getState().completePasswordRecovery();
+    expect(useSessionStore.getState().phase).toBe('signedIn');
+  });
+
   it('çıkışta oturum ve sorgu önbelleğini temizler', async () => {
     await useSessionStore.getState().setSession(null);
 

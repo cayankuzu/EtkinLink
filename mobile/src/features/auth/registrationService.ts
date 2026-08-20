@@ -56,19 +56,18 @@ export async function clearPendingRegistration(): Promise<void> {
 
 export async function finalizePendingRegistration(): Promise<boolean> {
   if (finalizationPromise) return finalizationPromise;
-  const draft = getRegistrationDraft();
-  const persisted = await readPersistedRegistration();
-  const pending: PendingRegistration | null =
-    draft.submitted && draft.photos.length >= 3
-      ? { email: draft.email, photos: draft.photos }
-      : persisted;
-  if (!pending || pending.photos.length < 3) return false;
-
-  finalizationPromise = finalizeDraft(pending)
-    .then(() => true)
-    .finally(() => {
-      finalizationPromise = null;
-    });
+  finalizationPromise = (async () => {
+    const draft = getRegistrationDraft();
+    const persisted = await readPersistedRegistration();
+    const pending: PendingRegistration | null =
+      draft.submitted && draft.photos.length >= 3
+        ? { email: draft.email, photos: draft.photos }
+        : persisted;
+    if (!pending || pending.photos.length < 3) return false;
+    return finalizeDraft(pending);
+  })().finally(() => {
+    finalizationPromise = null;
+  });
   return finalizationPromise;
 }
 
@@ -83,14 +82,14 @@ async function readPersistedRegistration(): Promise<PendingRegistration | null> 
   }
 }
 
-async function finalizeDraft(pending: PendingRegistration): Promise<void> {
+async function finalizeDraft(pending: PendingRegistration): Promise<boolean> {
   const { data, error: authError } = await supabase.auth.getUser();
   if (authError) throw authError;
   if (
     data.user.email?.trim().toLocaleLowerCase('tr-TR') !==
     pending.email.trim().toLocaleLowerCase('tr-TR')
   ) {
-    return;
+    return false;
   }
 
   const uploadedPaths: string[] = [];
@@ -119,6 +118,7 @@ async function finalizeDraft(pending: PendingRegistration): Promise<void> {
 
     useRegistrationDraftStore.getState().reset();
     await clearPendingRegistration();
+    return true;
   } catch (error) {
     if (uploadedPaths.length > 0) {
       await supabase.storage.from('profile-photos').remove(uploadedPaths);

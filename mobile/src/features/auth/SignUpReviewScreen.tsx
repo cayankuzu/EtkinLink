@@ -16,7 +16,7 @@ import {
 import { useState } from 'react';
 import { Alert, Linking, Pressable, StyleSheet, View } from 'react-native';
 
-import { isEmailAvailable, signUp } from './authService';
+import { signUp } from './authService';
 import {
   clearPendingVerification,
   persistPendingVerification,
@@ -59,22 +59,16 @@ export function SignUpReviewScreen({ navigation }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const [usernameAvailable, emailAvailable] = await Promise.all([
-        isUsernameAvailable(draft.basics.username),
-        isEmailAvailable(draft.email),
-      ]);
+      const usernameAvailable = await isUsernameAvailable(
+        draft.basics.username,
+      );
       if (!usernameAvailable) {
         throw new Error(
           'Bu kullanıcı adı az önce alınmış. Önceki adıma dönüp başka bir kullanıcı adı seç.',
         );
       }
-      if (!emailAvailable) {
-        throw new Error(
-          'Bu e-posta adresiyle az önce başka bir hesap oluşturuldu. İlk adıma dönüp başka bir adres seç.',
-        );
-      }
       await persistPendingRegistration();
-      await persistPendingVerification(draft.email, draft.password);
+      await persistPendingVerification(draft.email);
       await signUp(
         { email: draft.email, password: draft.password },
         {
@@ -222,7 +216,7 @@ const styles = StyleSheet.create({
   },
   documentTitle: { flex: 1 },
   terms: {
-    minHeight: 72,
+    minHeight: 60,
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.sm,

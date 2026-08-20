@@ -420,7 +420,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   sheetHeader: {
-    minHeight: 72,
+    minHeight: 60,
     padding: spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
@@ -460,7 +460,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   dimensionRow: {
-    minHeight: 70,
+    minHeight: 56,
     padding: spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
@@ -489,6 +489,6 @@ const styles = StyleSheet.create({
   },
   eventList: { gap: spacing.xs },
   eventRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  eventImage: { width: 52, height: 52, borderRadius: radius.sm },
+  eventImage: { width: 48, height: 48, borderRadius: radius.sm },
   eventText: { flex: 1, gap: 2 },
 });

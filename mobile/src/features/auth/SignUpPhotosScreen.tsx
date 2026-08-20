@@ -1,7 +1,7 @@
 import type { AuthStackParamList } from '@app/navigation/types';
 import type { LocalPhoto } from '@features/onboarding/onboardingService';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { AppButton, AppText, IconButton } from '@shared/components';
+import { AppButton, AppImage, AppText, IconButton } from '@shared/components';
 import { createClientId } from '@shared/lib/ids';
 import { colors, radius, shadows, spacing } from '@shared/theme';
 import {
@@ -14,14 +14,7 @@ import {
   X,
 } from 'lucide-react-native';
 import { useRef, useState } from 'react';
-import {
-  Image,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  View,
-} from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import {
   type Asset,
   launchCamera,
@@ -178,7 +171,7 @@ export function SignUpPhotosScreen({ navigation }: Props) {
                 onPress={() => handlePhotoPress(index)}
                 style={styles.photoPressable}
               >
-                <Image source={{ uri: photo.uri }} style={styles.photo} />
+                <AppImage uri={photo.uri} style={styles.photo} />
                 {selected ? (
                   <View style={styles.selectedBadge}>
                     <Check size={14} color={colors.textInverse} />
@@ -322,10 +315,10 @@ export function SignUpPhotosScreen({ navigation }: Props) {
             style={styles.previewClose}
           />
           {preview ? (
-            <Image
-              source={{ uri: preview.uri }}
+            <AppImage
+              uri={preview.uri}
               style={styles.previewImage}
-              resizeMode="contain"
+              fit="contain"
             />
           ) : null}
         </View>
@@ -440,7 +433,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.borderStrong,
   },
   sourceOption: {
-    minHeight: 68,
+    minHeight: 56,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,

@@ -1,0 +1,59 @@
+# EAS Build archive exclusions for the repository-root monorepo.
+.git/
+.codex/
+.dependency-backups/
+.expo/
+.expo*/
+artifacts/
+mobile-pre-expo-ntfs-backup-*/
+node_modules/
+
+# Mobile dependencies, local tooling, caches, test evidence, and build output.
+mobile/node_modules/
+mobile/node_modules-stale-*/
+mobile/.expo/
+mobile/.expo*/
+mobile/.android-tools/
+mobile/.maestro/
+mobile/artifacts/
+mobile/coverage/
+mobile/android/.gradle/
+mobile/android/.cxx/
+mobile/android/.cxx-longpath-backup/
+mobile/android/app/build/
+mobile/android/build/
+mobile/android/**/*-stale-*/
+mobile/ios/Pods/
+mobile/vendor/bundle/
+
+# Backend and local-only state is not needed by the native app build.
+supabase/.branches/
+supabase/.temp/
+
+# Secrets, environment files, and generated release artifacts.
+**/.env
+**/.env.*
+!**/.env.example
+*.apk
+*.aab
+*.ipa
+*.jks
+*.keystore
+*.p12
+*.p8
+*.key
+*.certSigningRequest
+*.mobileprovision
+credentials.json
+**/*firebase-adminsdk*.json
+**/*service-account*.json
+
+# General temporary/report files.
+*.log
+**/.DS_Store
+**/npm-debug.log
+**/yarn-error.log
+**/fastlane/report.xml
+**/fastlane/Preview.html
+**/fastlane/screenshots/
+**/fastlane/test_output/

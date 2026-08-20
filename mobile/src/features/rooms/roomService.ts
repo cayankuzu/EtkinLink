@@ -1,4 +1,5 @@
 import { paginationLimits } from '@shared/constants/limits';
+import { applyAbortSignal } from '@shared/lib/network';
 import { getSignedProfilePhotoUrls } from '@shared/lib/profilePhotoUrls';
 import { supabase } from '@shared/lib/supabase';
 import type { Database } from '@shared/types/database';
@@ -36,12 +37,16 @@ function mapRoom(row: RoomRow): RoomSummary {
 
 export async function listRooms(
   cursor: RoomCursor | null = null,
+  signal?: AbortSignal,
 ): Promise<RoomPage> {
-  const { data, error } = await supabase.rpc('list_joined_rooms', {
-    page_size: paginationLimits.rooms,
-    cursor_joined_at: cursor?.joinedAt ?? null,
-    cursor_event_id: cursor?.eventId ?? null,
-  });
+  const { data, error } = await applyAbortSignal(
+    supabase.rpc('list_joined_rooms', {
+      page_size: paginationLimits.rooms,
+      cursor_joined_at: cursor?.joinedAt ?? null,
+      cursor_event_id: cursor?.eventId ?? null,
+    }),
+    signal,
+  );
   if (error) throw error;
   const items = data.map(mapRoom);
   const last = data.at(-1);
@@ -76,16 +81,20 @@ async function mapMessages(rows: RoomMessageReadRow[]): Promise<RoomMessage[]> {
 export async function listRoomMessages(
   eventId: string,
   cursor: { createdAt: string; id: string } | null = null,
+  signal?: AbortSignal,
 ): Promise<{
   items: RoomMessage[];
   nextCursor: { createdAt: string; id: string } | null;
 }> {
-  const { data, error } = await supabase.rpc('list_room_messages', {
-    target_event_id: eventId,
-    page_size: 35,
-    cursor_created_at: cursor?.createdAt ?? null,
-    cursor_message_id: cursor?.id ?? null,
-  });
+  const { data, error } = await applyAbortSignal(
+    supabase.rpc('list_room_messages', {
+      target_event_id: eventId,
+      page_size: 35,
+      cursor_created_at: cursor?.createdAt ?? null,
+      cursor_message_id: cursor?.id ?? null,
+    }),
+    signal,
+  );
   if (error) throw error;
   const items = await mapMessages(data);
   const last = data.at(-1);

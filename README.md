@@ -17,9 +17,9 @@ Etkinlik etrafında güvenli sosyalleşme ve eşleşme platformu. Bu depo, saf m
 4. `npm start`
 5. Ayrı terminalde `npm run android`
 
-Bu proje Expo değil, bare React Native projesidir. Proje kökünde `npx expo start` kullanılmaz. Kök dizinde doğrudan `npm start` komutu Metro'yu `mobile/` paketi için başlatır.
+Bu proje Expo SDK modüllerini kullanan prebuild/bare React Native uygulamasıdır. Kök dizindeki `npm start`, Expo development client için Metro'yu `mobile/` paketi üzerinden başlatır; native Android ve iOS projeleri sürüm kontrolünde tutulur.
 
-Masaüstündeki debug APK: `C:\Users\Cayan\Desktop\EtkinLink-debug.apk`
+Güncel debug APK `mobile` dizininde `npm run build:debug` ile üretilir; release paketi yalnızca CI secret store'daki production imza bilgileriyle oluşturulabilir.
 
 ## Kalite kapısı
 
@@ -29,6 +29,16 @@ npm run test:coverage
 npm audit --omit=dev
 ```
 
-Supabase migration'ları bağlı EtkinLink projesine uygulanmış, remote lint temizlenmiş ve etkinlik aktarım fonksiyonu doğrulanmıştır. Tekrarlanabilir güvenli dağıtım adımları [Supabase dağıtım belgesinde](docs/supabase-deployment.md) yer alır.
+Supabase için tekrarlanabilir migration, lint, pgTAP ve güvenli dağıtım adımları [Supabase dağıtım belgesinde](docs/supabase-deployment.md) yer alır. Yeni migration'lar linked ortama uygulanmadan remote şema güncel kabul edilmez.
 
 Runtime'da etkinlik veya kullanıcı mock verisi bulunmaz. Etkinlik kayıtları yalnızca `https://etkinlik.io/rss/sorgu` kaynağından sunucu tarafında alınır ve kaynakta gerçek HTTPS görseli olmayan kayıtlar yayınlanmaz. Şehirler ve ilgi alanları kullanıcı üretimi olmayan sabit referans verileridir.
+
+## Operasyon belgeleri
+
+- [Production hazırlık özeti](docs/production-readiness.md)
+- [Mağaza hazırlık kapısı](docs/store-readiness.md)
+- [Push operasyonları](docs/push-operations.md)
+- [Monitoring runbook](docs/monitoring-runbook.md)
+- [Cihaz matrisi](docs/device-matrix.md)
+- [Gizlilik veri envanteri](docs/privacy-data-inventory.md)
+- [Google Play Data Safety eşlemesi](docs/google-play-data-safety.md)

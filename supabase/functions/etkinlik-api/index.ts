@@ -110,18 +110,18 @@ function mapEvent(value: unknown): JsonObject | null {
   const districtData = record(venueData?.district);
   const registeredVenue = venueType === "VENUE";
   const manualVenue = venueType === "MANUAL";
-  const venue =
-    entityName(venueData) ?? (venueType === "ONLINE" ? "Çevrim içi" : null);
+  const venue = entityName(venueData) ??
+    (venueType === "ONLINE" ? "Çevrim içi" : null);
   const city = registeredVenue
     ? entityName(cityData)
     : manualVenue
-      ? text(venueData?.city_name) || null
-      : null;
+    ? text(venueData?.city_name) || null
+    : null;
   const district = registeredVenue
     ? entityName(districtData)
     : manualVenue
-      ? text(venueData?.district_name) || null
-      : null;
+    ? text(venueData?.district_name) || null
+    : null;
   const tags = Array.isArray(event?.tags) ? event.tags : [];
   const categories = [
     entityName(event?.format),
@@ -129,7 +129,7 @@ function mapEvent(value: unknown): JsonObject | null {
     ...tags.map(entityName),
   ].filter((item): item is string => Boolean(item));
   const uniqueCategories = [
-    ...new Map(categories.map(item => [normalize(item), item])).values(),
+    ...new Map(categories.map((item) => [normalize(item), item])).values(),
   ];
   const description = cleanHtml(event?.content);
 
@@ -164,15 +164,19 @@ function mapEvent(value: unknown): JsonObject | null {
       ticketUrl: secureUrl(event?.ticket_url),
       availability: null,
       ageRange: null,
-      isAccessibleForFree:
-        typeof event?.is_free === "boolean" ? event.is_free : null,
+      isAccessibleForFree: typeof event?.is_free === "boolean"
+        ? event.is_free
+        : null,
       doorTime: null,
       duration: null,
     },
   };
 }
 
-async function fetchApi(path: string, params?: URLSearchParams): Promise<unknown> {
+async function fetchApi(
+  path: string,
+  params?: URLSearchParams,
+): Promise<unknown> {
   const apiToken = Deno.env.get("ETKINLIK_IO_API_TOKEN");
   if (!apiToken) throw new Error("API_TOKEN_MISSING");
   const url = new URL(`${API_BASE_URL}${path}`);
@@ -206,7 +210,7 @@ async function fetchApi(path: string, params?: URLSearchParams): Promise<unknown
 
 function catalogItems(value: unknown): CatalogItem[] {
   if (!Array.isArray(value)) return [];
-  return value.flatMap(item => {
+  return value.flatMap((item) => {
     const itemRecord = record(item);
     const id = numberValue(itemRecord?.id);
     const name = text(itemRecord?.name);
@@ -234,10 +238,12 @@ async function getCatalog(): Promise<Catalog> {
 }
 
 function findIds(catalog: CatalogItem[], names: string[]): number[] {
-  const byName = new Map(catalog.map(item => [normalize(item.name), item.id]));
+  const byName = new Map(
+    catalog.map((item) => [normalize(item.name), item.id]),
+  );
   return [
     ...new Set(
-      names.flatMap(name => {
+      names.flatMap((name) => {
         const id = byName.get(normalize(name));
         return id === undefined ? [] : [id];
       }),
@@ -259,7 +265,7 @@ async function ensureAuthenticated(request: Request): Promise<boolean> {
   return !error && Boolean(data.user);
 }
 
-Deno.serve(async request => {
+Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return jsonResponse(200, { ok: true });
   if (request.method !== "POST") {
     return jsonResponse(405, { error: "Yalnızca POST desteklenir." });
@@ -322,7 +328,8 @@ Deno.serve(async request => {
     const events = (Array.isArray(upstream?.items) ? upstream.items : [])
       .map(mapEvent)
       .filter((event): event is JsonObject => Boolean(event));
-    const total = numberValue(record(upstream?.meta)?.total_count) ?? events.length;
+    const total = numberValue(record(upstream?.meta)?.total_count) ??
+      events.length;
     const consumed = skip + events.length;
     return jsonResponse(200, {
       events,
@@ -333,10 +340,9 @@ Deno.serve(async request => {
     const code = error instanceof Error ? error.message : "UNKNOWN";
     const status = code === "UPSTREAM_429" ? 429 : 502;
     return jsonResponse(status, {
-      error:
-        code === "API_TOKEN_MISSING"
-          ? "Etkinlik.io API yapılandırması eksik."
-          : "Etkinlik.io API isteği başarısız.",
+      error: code === "API_TOKEN_MISSING"
+        ? "Etkinlik.io API yapılandırması eksik."
+        : "Etkinlik.io API isteği başarısız.",
       code: code.slice(0, 80),
     });
   }

@@ -59,4 +59,21 @@ describe('eşleşme aday kartı', () => {
     expect(view.queryByLabelText('Beğen')).toBeNull();
     await view.unmount();
   });
+
+  it('gelen beğeni modunda yalnızca geç eylemini gösterir', async () => {
+    const onPass = jest.fn();
+    const view = await render(
+      <CandidateCard
+        candidate={candidate}
+        eventTitle="İstanbul Caz Festivali"
+        showLikeAction={false}
+        onPass={onPass}
+      />,
+    );
+    expect(view.getByLabelText('Geç')).toBeTruthy();
+    expect(view.queryByLabelText('Beğen')).toBeNull();
+    await fireEvent.press(view.getByLabelText('Geç'));
+    expect(onPass).toHaveBeenCalledTimes(1);
+    await view.unmount();
+  });
 });

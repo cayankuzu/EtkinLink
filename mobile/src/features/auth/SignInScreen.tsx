@@ -85,6 +85,7 @@ export function SignInScreen({ navigation }: Props) {
         name="email"
         render={({ field: { onChange, onBlur, value } }) => (
           <TextField
+            testID="sign-in-email"
             label="E-posta adresi"
             placeholder="ornek@eposta.com"
             leadingIcon={Mail}
@@ -112,6 +113,7 @@ export function SignInScreen({ navigation }: Props) {
         name="password"
         render={({ field: { onChange, onBlur, value } }) => (
           <TextField
+            testID="sign-in-password"
             ref={passwordRef}
             label="Şifre"
             placeholder="Şifreni gir"
@@ -150,6 +152,7 @@ export function SignInScreen({ navigation }: Props) {
 
       <AppButton
         label="Giriş Yap"
+        testID="sign-in-submit"
         loading={isSubmitting}
         onPress={() => void onSubmit()}
         style={styles.submit}
@@ -184,7 +187,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: -spacing.xs,
   },
-  submit: { minHeight: 54, borderRadius: radius.lg, marginTop: spacing.xxs },
+  submit: { minHeight: 48, borderRadius: radius.lg, marginTop: spacing.xxs },
   trustNote: {
     flexDirection: 'row',
     alignItems: 'center',

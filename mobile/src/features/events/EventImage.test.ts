@@ -1,12 +1,17 @@
 import { compatibleEventImageUrl } from './EventImage';
 
 describe('etkinlik görsel uyumluluğu', () => {
-  it('AVIF afişleri Android uyumlu WebP kaynağına dönüştürür', () => {
+  it('HTTPS AVIF afişini üçüncü tarafa göndermeden kullanır', () => {
     const source = 'https://cdn.example.com/poster.avif';
     const result = compatibleEventImageUrl(source);
-    expect(result).toContain('https://wsrv.nl/');
-    expect(result).toContain('output=webp');
-    expect(decodeURIComponent(result)).toContain(source);
+    expect(result).toBe(source);
+    expect(result).not.toContain('wsrv.nl');
+  });
+
+  it('güvensiz HTTP görselini reddeder', () => {
+    expect(compatibleEventImageUrl('http://cdn.example.com/poster.jpg')).toBe(
+      '',
+    );
   });
 
   it('desteklenen görsel adresini değiştirmez', () => {

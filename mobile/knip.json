@@ -5,6 +5,5 @@
   "ignoreDependencies": [
     "eslint-import-resolver-typescript",
     "eslint-plugin-import"
-  ],
-  "ignoreBinaries": ["gradlew.bat"]
+  ]
 }

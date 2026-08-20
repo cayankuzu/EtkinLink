@@ -1,5 +1,5 @@
 import { AppText, IconButton, Skeleton, StateView } from '@shared/components';
-import { colors, radius, shadows, spacing } from '@shared/theme';
+import { colors, layout, radius, shadows, spacing } from '@shared/theme';
 import type { Event, MatchContext, Profile } from '@shared/types/domain';
 import { FlashList } from '@shopify/flash-list';
 import { Bookmark, Settings } from 'lucide-react-native';
@@ -228,7 +228,7 @@ function EventTile({ event, onPress }: { event: Event; onPress: () => void }) {
 const styles = StyleSheet.create({
   wrapper: { gap: spacing.md, paddingBottom: spacing.xl },
   appBar: {
-    height: 64,
+    height: layout.headerHeight,
     flexDirection: 'row',
     alignItems: 'center',
   },

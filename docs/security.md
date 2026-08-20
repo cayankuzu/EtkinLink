@@ -14,6 +14,7 @@ Sohbette daha önce paylaşılmış secret'lar güvenli kabul edilmez; üretimde
 - Tüm public tablolar RLS kullanır.
 - Mesaj okuma, yalnızca eşleşmenin/odanın taraflarına açıktır.
 - Mesaj gönderme RPC'si aktif eşleşme, engel, silinme ve oda zaman penceresini sunucuda doğrular.
+- Mesaj gönderimleri kullanıcı başına tüm DM/oda toplamında dakikada 45; aynı konuşmada 10 saniyede 8 ile sınırlandırılır. Advisory transaction lock eşzamanlı isteklerin sayım yarışını önler; aynı `client_message_id` retry'ı yeni mesaj sayılmaz.
 - Profil doğum tarihi yalnızca hesap sahibine döner. Yaş ve cinsiyet görünürlüğü sunucu tarafında uygulanır.
 - Profil fotoğrafları private bucket'tadır ve bir saatlik imzalı URL ile sunulur.
 - Private Realtime topic'leri eşleşme üyeliği veya etkinlik katılımı ile yetkilendirilir.
@@ -24,6 +25,7 @@ Sohbette daha önce paylaşılmış secret'lar güvenli kabul edilmez; üretimde
 - SSL pinning eklenmedi. Supabase'in yönetilen sertifika rotasyonu nedeniyle plansız pinning erişim kesintisi riski doğurur. HTTPS ve platform trust store zorunludur; pinning ancak yedek pin ve rotasyon runbook'u ile eklenmelidir.
 - Biyometrik uygulama kilidi MVP işlevi değildir. Token zaten Keychain/Keystore'dadır.
 - Hassas mesaj içeriği telemetry/log'a yazılmaz.
+- IP/device limiti veritabanında istemcinin gönderdiği bir header'a dayandırılmaz; bu kimlikler mobil istemci tarafından taklit edilebilir. IP tabanlı abuse kontrolü production API gateway/WAF katmanında, güvenilir bağlantı metadatasıyla uygulanmalıdır. DB'deki kullanıcı ve konuşma limiti yetkili son savunma katmanıdır.
 
 ## Yayın öncesi zorunlu kontroller
 

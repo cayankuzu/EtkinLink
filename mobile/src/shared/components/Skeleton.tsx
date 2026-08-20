@@ -1,7 +1,7 @@
 import { colors, radius } from '@shared/theme';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ViewStyle } from 'react-native';
-import { Animated, Easing, StyleSheet } from 'react-native';
+import { AccessibilityInfo, Animated, Easing, StyleSheet } from 'react-native';
 
 type SkeletonProps = { style?: ViewStyle; accessibilityLabel?: string };
 
@@ -9,8 +9,21 @@ export function Skeleton({
   style,
   accessibilityLabel = 'İçerik yükleniyor',
 }: SkeletonProps) {
+  const [reduceMotion, setReduceMotion] = useState(false);
   const opacity = useRef(new Animated.Value(0.45)).current;
   useEffect(() => {
+    void AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
+    const subscription = AccessibilityInfo.addEventListener(
+      'reduceMotionChanged',
+      setReduceMotion,
+    );
+    return () => subscription.remove();
+  }, []);
+  useEffect(() => {
+    if (reduceMotion) {
+      opacity.setValue(0.65);
+      return undefined;
+    }
     const animation = Animated.loop(
       Animated.sequence([
         Animated.timing(opacity, {
@@ -29,7 +42,7 @@ export function Skeleton({
     );
     animation.start();
     return () => animation.stop();
-  }, [opacity]);
+  }, [opacity, reduceMotion]);
   return (
     <Animated.View
       accessibilityLabel={accessibilityLabel}

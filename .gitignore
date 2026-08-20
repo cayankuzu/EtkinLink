@@ -24,5 +24,15 @@ mobile/current.png
 mobile/join.png
 *.apk
 *.log
+*.jks
+*.keystore
+*.p12
+*.key
+*.p8
+*.certSigningRequest
+*.mobileprovision
+credentials.json
+**/*firebase-adminsdk*.json
+**/*service-account*.json
 .codex/
 .codex-*.png

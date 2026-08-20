@@ -64,11 +64,6 @@ export function EmailSentScreen({ route, navigation }: Props) {
           text: 'Güvenli doğrulama bilgisi bu cihazda bulunamadı. E-postadaki bağlantıya dokunarak uygulamaya dönebilirsin.',
           tone: 'danger',
         });
-      } else if (result === 'credentials_invalid') {
-        setFeedback({
-          text: 'Bu hesap için cihazda saklanan şifre güncel değil. Yeni doğrulama e-postasını aç; ardından gerekirse ana sayfadaki “Şifremi unuttum” adımıyla şifreni yenile.',
-          tone: 'brand',
-        });
       } else {
         setFeedback({
           text: 'E-posta doğrulandı. Hesabına giriş yapılıyor…',

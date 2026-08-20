@@ -4,24 +4,25 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   AppButton,
   AppText,
+  ChatComposer,
   ErrorState,
   IconButton,
   Screen,
   Skeleton,
   StateView,
 } from '@shared/components';
-import { contentLimits } from '@shared/constants/limits';
 import { legalDocumentUrls } from '@shared/legal/documents';
 import {
   enqueueOutbox,
   listOutbox,
   removeFromOutbox,
 } from '@shared/lib/chatOutbox';
-import { formatMessageDateTime } from '@shared/lib/date';
 import { toAppError } from '@shared/lib/errors';
 import { createClientId } from '@shared/lib/ids';
+import { queryKeys } from '@shared/lib/queryKeys';
 import { supabase } from '@shared/lib/supabase';
-import { colors, radius, spacing, typography } from '@shared/theme';
+import { captureAppError } from '@shared/lib/telemetry';
+import { colors, layout, radius, spacing } from '@shared/theme';
 import type { RoomMessage } from '@shared/types/domain';
 import { FlashList } from '@shopify/flash-list';
 import {
@@ -36,32 +37,27 @@ import {
   ChevronRight,
   Flag,
   HeartHandshake,
+  LockKeyhole,
   LogOut,
   MoreHorizontal,
-  RotateCcw,
-  Send,
   ShieldCheck,
   UsersRound,
 } from 'lucide-react-native';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
-  Image,
   KeyboardAvoidingView,
   Linking,
   Modal,
   Platform,
   Pressable,
   StyleSheet,
-  TextInput,
   View,
 } from 'react-native';
 
-import {
-  listRoomParticipants,
-  type RoomParticipant,
-} from './roomParticipantsService';
-import { getRoomState } from './roomRules';
+import { RoomMessageBubble } from './RoomMessageBubble';
+import { listRoomParticipants } from './roomParticipantsService';
+import { formatPostEventRemaining, getRoomState } from './roomRules';
 import {
   listRoomMessages,
   markRoomRead,
@@ -69,6 +65,7 @@ import {
   submitRoomReport,
 } from './roomService';
 import type { RoomPage } from './roomTypes';
+import { RoomTypingIndicator } from './RoomTypingIndicator';
 import { useRoomRealtime } from './useRoomRealtime';
 
 type Props = NativeStackScreenProps<RoomsStackParamList, 'RoomDetail'>;
@@ -80,19 +77,22 @@ export function RoomDetailScreen({ route, navigation }: Props) {
   const [pending, setPending] = useState<RoomMessage[]>([]);
   const [optionsVisible, setOptionsVisible] = useState(false);
   const [optionBusy, setOptionBusy] = useState(false);
+  const [now, setNow] = useState(() => new Date());
+  const [frozenNotice, setFrozenNotice] = useState<string | null>(null);
+  const frozenNoticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const event = useQuery({
-    queryKey: ['event', route.params.eventId],
-    queryFn: () => getEvent(route.params.eventId),
+    queryKey: queryKeys.events.detail(route.params.eventId),
+    queryFn: ({ signal }) => getEvent(route.params.eventId, signal),
   });
   const messages = useInfiniteQuery({
-    queryKey: ['room-messages', route.params.eventId],
-    queryFn: ({ pageParam }) =>
-      listRoomMessages(route.params.eventId, pageParam),
+    queryKey: queryKeys.rooms.messages(route.params.eventId),
+    queryFn: ({ pageParam, signal }) =>
+      listRoomMessages(route.params.eventId, pageParam, signal),
     initialPageParam: null as { createdAt: string; id: string } | null,
     getNextPageParam: page => page.nextCursor,
   });
   const participants = useQuery({
-    queryKey: ['room-participants', route.params.eventId],
+    queryKey: queryKeys.rooms.participants(route.params.eventId),
     queryFn: () => listRoomParticipants(route.params.eventId),
     enabled: Boolean(userId),
     staleTime: 5 * 60_000,
@@ -115,7 +115,7 @@ export function RoomDetailScreen({ route, navigation }: Props) {
 
   const clearUnreadCount = useCallback(() => {
     queryClient.setQueriesData<InfiniteData<RoomPage>>(
-      { queryKey: ['rooms'] },
+      { queryKey: queryKeys.rooms.all },
       current =>
         current
           ? {
@@ -140,7 +140,7 @@ export function RoomDetailScreen({ route, navigation }: Props) {
     await markRoomRead(route.params.eventId);
     clearUnreadCount();
     await queryClient.invalidateQueries({
-      queryKey: ['rooms'],
+      queryKey: queryKeys.rooms.all,
       refetchType: 'none',
     });
   }, [clearUnreadCount, queryClient, route.params.eventId]);
@@ -148,7 +148,7 @@ export function RoomDetailScreen({ route, navigation }: Props) {
   const refreshMessages = useCallback(() => {
     clearUnreadCount();
     void queryClient.invalidateQueries({
-      queryKey: ['room-messages', route.params.eventId],
+      queryKey: queryKeys.rooms.messages(route.params.eventId),
     });
     void markCurrentRoomRead().catch(() => undefined);
   }, [
@@ -176,22 +176,43 @@ export function RoomDetailScreen({ route, navigation }: Props) {
   }, [participants.data, roomRealtime.typingUserIds]);
 
   useEffect(() => {
-    void supabase.auth
-      .getUser()
-      .then(({ data }) => setUserId(data.user?.id ?? null));
-    void listOutbox('room', route.params.eventId).then(outbox => {
-      setPending(
-        outbox.map(message => ({
-          id: message.clientMessageId,
-          eventId: route.params.eventId,
-          senderId: '',
-          senderName: 'Sen',
-          senderPhotoUrl: null,
-          body: message.body,
-          clientMessageId: message.clientMessageId,
-          createdAt: message.createdAt,
-          status: 'failed',
-        })),
+    const clock = setInterval(() => setNow(new Date()), 60_000);
+    return () => {
+      clearInterval(clock);
+      if (frozenNoticeTimer.current) clearTimeout(frozenNoticeTimer.current);
+    };
+  }, []);
+
+  const showFrozenNotice = useCallback((message: string) => {
+    if (frozenNoticeTimer.current) clearTimeout(frozenNoticeTimer.current);
+    setFrozenNotice(message);
+    frozenNoticeTimer.current = setTimeout(() => {
+      setFrozenNotice(null);
+      frozenNoticeTimer.current = null;
+    }, 2_800);
+  }, []);
+
+  useEffect(() => {
+    void supabase.auth.getUser().then(({ data }) => {
+      const currentUserId = data.user?.id ?? null;
+      setUserId(currentUserId);
+      if (!currentUserId) return;
+      void listOutbox(currentUserId, 'room', route.params.eventId).then(
+        outbox => {
+          setPending(
+            outbox.map(message => ({
+              id: message.clientMessageId,
+              eventId: route.params.eventId,
+              senderId: currentUserId,
+              senderName: 'Sen',
+              senderPhotoUrl: null,
+              body: message.body,
+              clientMessageId: message.clientMessageId,
+              createdAt: message.createdAt,
+              status: 'failed',
+            })),
+          );
+        },
       );
     });
     void markCurrentRoomRead().catch(() => undefined);
@@ -199,6 +220,12 @@ export function RoomDetailScreen({ route, navigation }: Props) {
 
   function confirmLeave() {
     setOptionsVisible(false);
+    if (roomFrozen) {
+      showFrozenNotice(
+        'Bu oda arşivlendiği için etkinlikten ayrılma işlemi donduruldu.',
+      );
+      return;
+    }
     Alert.alert(
       'Etkinlikten ayrıl',
       'Odadan çıkacak ve bu etkinliğe özel eşleşme alanına erişemeyeceksin.',
@@ -211,8 +238,12 @@ export function RoomDetailScreen({ route, navigation }: Props) {
             setOptionBusy(true);
             void leaveEvent(route.params.eventId)
               .then(() => {
-                void queryClient.invalidateQueries({ queryKey: ['rooms'] });
-                void queryClient.invalidateQueries({ queryKey: ['events'] });
+                void queryClient.invalidateQueries({
+                  queryKey: queryKeys.rooms.all,
+                });
+                void queryClient.invalidateQueries({
+                  queryKey: queryKeys.events.all,
+                });
                 navigation.popToTop();
               })
               .catch(error =>
@@ -268,9 +299,14 @@ export function RoomDetailScreen({ route, navigation }: Props) {
             : item,
         ),
       );
-      void removeFromOutbox(message.clientMessageId).catch(() => undefined);
+      if (userId) {
+        void removeFromOutbox(userId, message.clientMessageId).catch(
+          () => undefined,
+        );
+      }
       refreshMessages();
-    } catch {
+    } catch (error) {
+      captureAppError(error, { operation: 'message.room_send' });
       setPending(current =>
         current.map(item =>
           item.clientMessageId === message.clientMessageId
@@ -284,7 +320,7 @@ export function RoomDetailScreen({ route, navigation }: Props) {
   async function submit() {
     const trimmed = body.trim();
     if (!trimmed || trimmed.length > 700 || !userId) return;
-    const now = new Date().toISOString();
+    const createdAt = new Date().toISOString();
     const clientMessageId = createClientId();
     const optimistic: RoomMessage = {
       id: clientMessageId,
@@ -294,18 +330,21 @@ export function RoomDetailScreen({ route, navigation }: Props) {
       senderPhotoUrl: null,
       body: trimmed,
       clientMessageId,
-      createdAt: now,
+      createdAt,
       status: 'sending',
     };
     setBody('');
     roomRealtime.stopTyping();
     setPending(current => [optimistic, ...current]);
     await enqueueOutbox({
+      ownerId: userId,
       kind: 'room',
       contextId: route.params.eventId,
       clientMessageId,
       body: trimmed,
-      createdAt: now,
+      createdAt,
+      attempt: 0,
+      nextAttemptAt: createdAt,
     });
     await deliver(optimistic);
   }
@@ -320,7 +359,7 @@ export function RoomDetailScreen({ route, navigation }: Props) {
           text: 'İptal et',
           style: 'destructive',
           onPress: () => {
-            void removeFromOutbox(message.clientMessageId);
+            if (userId) void removeFromOutbox(userId, message.clientMessageId);
             setPending(current =>
               current.filter(
                 item => item.clientMessageId !== message.clientMessageId,
@@ -366,15 +405,24 @@ export function RoomDetailScreen({ route, navigation }: Props) {
         />
       </Screen>
     );
-  const state = getRoomState(event.data.startAt, event.data.endAt);
+  const state = getRoomState(event.data.startAt, event.data.endAt, now);
+  const roomFrozen = state === 'archived';
   const writable = state === 'active' || state === 'postEvent';
+  const stateLabel =
+    state === 'active'
+      ? 'Aktif'
+      : state === 'postEvent'
+      ? formatPostEventRemaining(event.data.startAt, event.data.endAt, now)
+      : state === 'locked'
+      ? 'Yakında'
+      : 'Arşiv';
   const stateMessage =
     state === 'locked'
       ? 'Sohbet etkinlikten 13 gün önce açılır.'
       : 'Bu oda arşivlendi. Mesajları okuyabilirsin; yeni mesaj gönderilemez.';
 
   return (
-    <Screen contentStyle={styles.screen}>
+    <Screen contentStyle={styles.screen} testID="room-detail-screen">
       <View style={styles.header}>
         <IconButton icon={ArrowLeft} label="Geri" onPress={navigation.goBack} />
         <Pressable
@@ -391,22 +439,25 @@ export function RoomDetailScreen({ route, navigation }: Props) {
             {event.data.title}
           </AppText>
           <AppText variant="caption12" tone="secondary">
-            Etkinlik odası ·{' '}
-            {state === 'active'
-              ? 'Aktif'
-              : state === 'postEvent'
-              ? 'Son 3 gün'
-              : state === 'locked'
-              ? 'Yakında'
-              : 'Arşiv'}
+            Etkinlik odası · {stateLabel}
           </AppText>
         </Pressable>
         <IconButton
           icon={HeartHandshake}
-          label="Eşleşme alanını aç"
-          onPress={() =>
-            navigation.navigate('MatchHub', { eventId: route.params.eventId })
-          }
+          label={roomFrozen ? 'Eşleşme alanı donduruldu' : 'Eşleşme alanını aç'}
+          accessibilityState={{ disabled: roomFrozen }}
+          style={roomFrozen ? styles.frozenAction : undefined}
+          onPress={() => {
+            if (roomFrozen) {
+              showFrozenNotice(
+                'Bu oda arşivlendiği için eşleşme alanı donduruldu.',
+              );
+              return;
+            }
+            navigation.navigate('MatchHub', {
+              eventId: route.params.eventId,
+            });
+          }}
         />
         <IconButton
           icon={MoreHorizontal}
@@ -414,6 +465,23 @@ export function RoomDetailScreen({ route, navigation }: Props) {
           onPress={() => setOptionsVisible(true)}
         />
       </View>
+      {frozenNotice ? (
+        <View
+          pointerEvents="none"
+          accessibilityLiveRegion="polite"
+          accessibilityRole="alert"
+          style={styles.frozenNotice}
+        >
+          <LockKeyhole size={18} color={colors.textInverse} />
+          <AppText
+            variant="body14"
+            tone="inverse"
+            style={styles.frozenNoticeText}
+          >
+            {frozenNotice}
+          </AppText>
+        </View>
+      ) : null}
       {items.length === 0 ? (
         <StateView
           title={
@@ -432,7 +500,7 @@ export function RoomDetailScreen({ route, navigation }: Props) {
           keyExtractor={item => item.id}
           contentContainerStyle={styles.list}
           renderItem={({ item }) => (
-            <MessageBubble
+            <RoomMessageBubble
               message={item}
               mine={item.senderId === userId || item.senderName === 'Sen'}
               onFailed={() => openFailed(item)}
@@ -451,34 +519,16 @@ export function RoomDetailScreen({ route, navigation }: Props) {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         {writable ? (
-          <View style={styles.composerWrap}>
-            <View style={styles.composer}>
-              <TextInput
-                accessibilityLabel="Odaya mesaj yaz"
-                placeholder="Mesaj yaz..."
-                placeholderTextColor={colors.textTertiary}
-                value={body}
-                onChangeText={value => {
-                  setBody(value);
-                  roomRealtime.notifyTyping(value);
-                }}
-                onBlur={roomRealtime.stopTyping}
-                maxLength={contentLimits.message}
-                multiline
-                style={styles.input}
-              />
-              <IconButton
-                icon={Send}
-                label="Mesajı gönder"
-                selected
-                disabled={!body.trim()}
-                onPress={() => void submit()}
-              />
-            </View>
-            <AppText variant="tiny11" tone="tertiary" align="right">
-              {body.length}/700
-            </AppText>
-          </View>
+          <ChatComposer
+            accessibilityLabel="Odaya mesaj yaz"
+            value={body}
+            onChangeText={value => {
+              setBody(value);
+              roomRealtime.notifyTyping(value);
+            }}
+            onBlur={roomRealtime.stopTyping}
+            onSend={() => void submit()}
+          />
         ) : (
           <View style={styles.lockedComposer}>
             <CalendarDays size={18} color={colors.textSecondary} />
@@ -507,6 +557,7 @@ export function RoomDetailScreen({ route, navigation }: Props) {
           <Pressable
             onPress={pressEvent => pressEvent.stopPropagation()}
             style={styles.sheet}
+            accessibilityViewIsModal
           >
             <View style={styles.sheetHandle} />
             <AppText variant="label15" tone="secondary">
@@ -539,6 +590,7 @@ export function RoomDetailScreen({ route, navigation }: Props) {
               <OptionRow
                 icon={LogOut}
                 label="Etkinlikten Ayrıl"
+                blocked={roomFrozen}
                 onPress={confirmLeave}
               />
               <OptionRow
@@ -561,90 +613,48 @@ export function RoomDetailScreen({ route, navigation }: Props) {
   );
 }
 
-function RoomTypingIndicator({
-  participants,
-}: {
-  participants: RoomParticipant[];
-}) {
-  const visible = participants.slice(0, 4);
-  const names = visible.map(participant => participant.fullName);
-  const label =
-    names.length === 1
-      ? `${names[0]} yazıyor...`
-      : names.length === 2
-      ? `${names[0]} ve ${names[1]} yazıyor...`
-      : `${names.slice(0, -1).join(', ')} ve ${names.at(-1)} yazıyor...`;
-
-  return (
-    <View style={styles.typingIndicator} accessibilityLiveRegion="polite">
-      <View style={styles.typingAvatars}>
-        {visible.map((participant, index) =>
-          participant.photoUrl ? (
-            <Image
-              key={participant.id}
-              source={{ uri: participant.photoUrl }}
-              accessibilityLabel={participant.fullName}
-              style={[
-                styles.typingAvatar,
-                index > 0 && styles.typingAvatarOverlap,
-              ]}
-            />
-          ) : (
-            <View
-              key={participant.id}
-              accessibilityLabel={participant.fullName}
-              style={[
-                styles.typingAvatar,
-                styles.typingAvatarFallback,
-                index > 0 && styles.typingAvatarOverlap,
-              ]}
-            >
-              <AppText variant="tiny11" tone="brand">
-                {participant.fullName
-                  .trim()
-                  .charAt(0)
-                  .toLocaleUpperCase('tr-TR')}
-              </AppText>
-            </View>
-          ),
-        )}
-      </View>
-      <AppText variant="caption12" tone="success" numberOfLines={1}>
-        {label}
-      </AppText>
-    </View>
-  );
-}
-
 function OptionRow({
   icon: Icon,
   label,
   onPress,
   danger = false,
   disabled = false,
+  blocked = false,
 }: {
   icon: typeof UsersRound;
   label: string;
   onPress: () => void;
   danger?: boolean;
   disabled?: boolean;
+  blocked?: boolean;
 }) {
+  const visuallyDisabled = disabled || blocked;
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityState={{ disabled: visuallyDisabled }}
       disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [
         styles.optionRow,
         pressed && styles.optionPressed,
-        disabled && styles.optionDisabled,
+        visuallyDisabled && styles.optionDisabled,
       ]}
     >
-      <Icon size={20} color={danger ? colors.danger : colors.iconPrimary} />
+      <Icon
+        size={20}
+        color={
+          visuallyDisabled
+            ? colors.textTertiary
+            : danger
+            ? colors.danger
+            : colors.iconPrimary
+        }
+      />
       <AppText
         variant="label15"
-        tone={danger ? 'danger' : 'primary'}
+        tone={visuallyDisabled ? 'tertiary' : danger ? 'danger' : 'primary'}
         style={styles.optionLabel}
       >
         {label}
@@ -654,76 +664,10 @@ function OptionRow({
   );
 }
 
-function MessageBubble({
-  message,
-  mine,
-  onFailed,
-}: {
-  message: RoomMessage;
-  mine: boolean;
-  onFailed: () => void;
-}) {
-  return (
-    <Pressable
-      disabled={message.status !== 'failed'}
-      onPress={onFailed}
-      style={[styles.messageRow, mine && styles.messageRowMine]}
-      accessibilityRole={message.status === 'failed' ? 'button' : undefined}
-      accessibilityLabel={
-        message.status === 'failed'
-          ? 'Başarısız mesaj. Yeniden göndermek için dokun'
-          : undefined
-      }
-    >
-      {!mine ? (
-        message.senderPhotoUrl ? (
-          <Image
-            source={{ uri: message.senderPhotoUrl }}
-            style={styles.avatar}
-          />
-        ) : (
-          <View style={styles.avatarFallback} />
-        )
-      ) : null}
-      <View
-        style={[
-          styles.bubble,
-          mine ? styles.bubbleMine : styles.bubbleOther,
-          message.status === 'failed' && styles.bubbleFailed,
-        ]}
-      >
-        {!mine ? (
-          <AppText variant="caption12" tone="brand">
-            {message.senderName}
-          </AppText>
-        ) : null}
-        <AppText variant="body14" tone={mine ? 'inverse' : 'primary'}>
-          {message.body}
-        </AppText>
-        <View style={styles.messageStatus}>
-          {message.status === 'failed' ? (
-            <RotateCcw
-              size={12}
-              color={mine ? colors.textInverse : colors.danger}
-            />
-          ) : null}
-          <AppText variant="tiny11" tone={mine ? 'inverse' : 'tertiary'}>
-            {message.status === 'sending'
-              ? `Gönderiliyor · ${formatMessageDateTime(message.createdAt)}`
-              : message.status === 'failed'
-              ? `Başarısız · ${formatMessageDateTime(message.createdAt)}`
-              : formatMessageDateTime(message.createdAt)}
-          </AppText>
-        </View>
-      </View>
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
   screen: { backgroundColor: colors.canvas },
   header: {
-    minHeight: 64,
+    minHeight: 56,
     paddingHorizontal: spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
@@ -733,89 +677,28 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   eventHeading: { flex: 1, minHeight: 48, justifyContent: 'center' },
-  headerSkeleton: { height: 64 },
+  headerSkeleton: { height: layout.headerHeight },
   messagesSkeleton: { flex: 1, margin: spacing.md },
-  list: { padding: spacing.md },
-  messageRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: spacing.xs,
-    marginBottom: spacing.sm,
-  },
-  messageRowMine: { justifyContent: 'flex-end' },
-  avatar: { width: 30, height: 30, borderRadius: 15 },
-  avatarFallback: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: colors.surfaceMuted,
-  },
-  bubble: {
-    maxWidth: '78%',
-    borderRadius: radius.lg,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    gap: 2,
-  },
-  bubbleMine: { backgroundColor: colors.brand, borderBottomRightRadius: 4 },
-  bubbleOther: { backgroundColor: colors.surface, borderBottomLeftRadius: 4 },
-  bubbleFailed: { backgroundColor: colors.danger },
-  messageStatus: {
-    alignSelf: 'flex-end',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-  },
-  typingIndicator: {
-    minHeight: 38,
+  frozenAction: { opacity: 0.45 },
+  frozenNotice: {
+    position: 'absolute',
+    zIndex: 20,
+    left: spacing.md,
+    right: spacing.md,
+    bottom: 88,
+    minHeight: 48,
+    borderRadius: radius.md,
     paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.textPrimary,
   },
-  typingAvatars: { flexDirection: 'row', alignItems: 'center' },
-  typingAvatar: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    borderWidth: 2,
-    borderColor: colors.surface,
-  },
-  typingAvatarOverlap: { marginLeft: -8 },
-  typingAvatarFallback: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.brandSoft,
-  },
-  composerWrap: {
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    backgroundColor: colors.surface,
-    paddingHorizontal: spacing.sm,
-    paddingTop: spacing.xs,
-    paddingBottom: spacing.xs,
-  },
-  composer: {
-    minHeight: 52,
-    maxHeight: 128,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surfaceMuted,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    paddingLeft: spacing.sm,
-    paddingRight: 4,
-    paddingVertical: 4,
-  },
-  input: {
-    ...typography.body15,
-    color: colors.textPrimary,
-    flex: 1,
-    maxHeight: 112,
-    paddingVertical: spacing.sm,
-  },
+  frozenNoticeText: { flex: 1 },
+  list: { padding: spacing.md },
   lockedComposer: {
-    minHeight: 72,
+    minHeight: 60,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
@@ -831,6 +714,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.overlay,
   },
   sheet: {
+    width: '100%',
+    maxWidth: layout.maxModalWidth,
+    maxHeight: '92%',
+    alignSelf: 'center',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     backgroundColor: colors.surface,

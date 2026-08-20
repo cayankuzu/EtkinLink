@@ -11,6 +11,7 @@ import {
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   AppButton,
+  AppImage,
   AppText,
   Chip,
   ErrorState,
@@ -22,19 +23,13 @@ import {
 import { contentLimits } from '@shared/constants/limits';
 import { toAppError } from '@shared/lib/errors';
 import { createClientId } from '@shared/lib/ids';
+import { queryKeys } from '@shared/lib/queryKeys';
 import { supabase } from '@shared/lib/supabase';
 import { colors, radius, spacing } from '@shared/theme';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ImagePlus, Star, Trash2, X } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
-import {
-  Image,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  View,
-} from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { launchImageLibrary } from 'react-native-image-picker';
 
 type Props = NativeStackScreenProps<RoomsStackParamList, 'MatchProfileEdit'>;
@@ -59,11 +54,11 @@ export function MatchProfileEditScreen({ navigation }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const profile = useQuery({
-    queryKey: ['profile', 'current'],
+    queryKey: queryKeys.profile.current,
     queryFn: () => getProfile(),
   });
   const interests = useQuery({
-    queryKey: ['interests'],
+    queryKey: queryKeys.profile.interests,
     queryFn: listInterests,
     staleTime: 24 * 60 * 60_000,
   });
@@ -159,8 +154,10 @@ export function MatchProfileEditScreen({ navigation }: Props) {
       if (profileError) throw profileError;
       await saveInterests(selected);
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['profile'] }),
-        queryClient.invalidateQueries({ queryKey: ['matching-settings'] }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.profile.all }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.matching.settings(),
+        }),
       ]);
       navigation.goBack();
     } catch (saveError) {
@@ -215,7 +212,7 @@ export function MatchProfileEditScreen({ navigation }: Props) {
         >
           {photos.map((photo, index) => (
             <View key={photo.id} style={styles.photoWrap}>
-              <Image source={{ uri: photo.uri }} style={styles.photo} />
+              <AppImage uri={photo.uri} style={styles.photo} />
               {index === 0 ? (
                 <View style={styles.primaryBadge}>
                   <Star
@@ -346,7 +343,7 @@ export function MatchProfileEditScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   screen: { padding: spacing.md, paddingBottom: spacing.xl, gap: spacing.lg },
   header: {
-    minHeight: 56,
+    minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,

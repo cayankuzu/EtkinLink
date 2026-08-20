@@ -3,8 +3,10 @@ import { useSessionStore } from '@features/auth/sessionStore';
 import { useScrollToTop } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
+  AppImage,
   AppText,
   ErrorState,
+  mainTabSafeAreaEdges,
   RefreshableContent,
   Screen,
   Skeleton,
@@ -13,6 +15,7 @@ import {
 import { contentLimits } from '@shared/constants/limits';
 import { formatMessagePreviewDateTime } from '@shared/lib/date';
 import { toAppError } from '@shared/lib/errors';
+import { queryKeys } from '@shared/lib/queryKeys';
 import { colors, radius, shadows, spacing, typography } from '@shared/theme';
 import type { Match } from '@shared/types/domain';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
@@ -20,7 +23,6 @@ import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { Search } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Image,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -48,8 +50,8 @@ export function MessagesScreen({ navigation }: Props) {
     new Set(),
   );
   const matches = useInfiniteQuery({
-    queryKey: ['matches', filter],
-    queryFn: ({ pageParam }) => listMatches(filter, pageParam),
+    queryKey: queryKeys.messages.matchList(filter),
+    queryFn: ({ pageParam, signal }) => listMatches(filter, pageParam, signal),
     initialPageParam: null as { activityAt: string; matchId: string } | null,
     getNextPageParam: page => page.nextCursor,
   });
@@ -72,7 +74,10 @@ export function MessagesScreen({ navigation }: Props) {
     ? items.filter(item => item.lastMessage || item.status !== 'active')
     : items;
   const refreshMatches = useCallback(
-    () => void queryClient.invalidateQueries({ queryKey: ['matches'] }),
+    () =>
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.messages.matches,
+      }),
     [queryClient],
   );
   const onViewableItemsChanged = useRef(
@@ -93,7 +98,11 @@ export function MessagesScreen({ navigation }: Props) {
   }, [currentUserId, refreshMatches]);
 
   return (
-    <Screen contentStyle={styles.screen}>
+    <Screen
+      contentStyle={styles.screen}
+      safeAreaEdges={mainTabSafeAreaEdges}
+      testID="messages-screen"
+    >
       <View style={styles.header}>
         <View style={styles.headerText}>
           <AppText variant="heading22">Mesajlar</AppText>
@@ -219,8 +228,8 @@ function NewMatches({
             style={styles.newMatch}
           >
             {item.otherUser.photos[0] ? (
-              <Image
-                source={{ uri: item.otherUser.photos[0].url }}
+              <AppImage
+                uri={item.otherUser.photos[0].url}
                 style={styles.newAvatar}
               />
             ) : (
@@ -271,7 +280,7 @@ function ConversationRow({
     >
       <View style={styles.avatarWrap}>
         {photo ? (
-          <Image source={{ uri: photo.url }} style={styles.avatar} />
+          <AppImage uri={photo.url} style={styles.avatar} />
         ) : (
           <View style={styles.avatar} />
         )}
@@ -321,7 +330,7 @@ function ConversationRow({
 const styles = StyleSheet.create({
   screen: { backgroundColor: colors.canvas },
   header: {
-    minHeight: 72,
+    minHeight: 60,
     justifyContent: 'center',
     paddingHorizontal: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -352,22 +361,22 @@ const styles = StyleSheet.create({
   skeleton: { height: 96 },
   newSection: { gap: spacing.sm, paddingBottom: spacing.md },
   newMatch: {
-    width: 72,
+    width: 64,
     alignItems: 'center',
     gap: spacing.xs,
     marginRight: spacing.sm,
   },
   newAvatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: colors.surfaceMuted,
     borderWidth: 2,
     borderColor: colors.brand,
   },
   row: {
     ...shadows.card,
-    minHeight: 78,
+    minHeight: 64,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.lg,

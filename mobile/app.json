@@ -2,33 +2,61 @@
   "expo": {
     "name": "EtkinLink",
     "slug": "etkinlink",
-    "version": "1.0.0",
+    "version": "1.0.8",
     "scheme": "etkinlink",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "icon": "./src/assets/images/etkinlink-symbol.png",
+    "backgroundColor": "#F7F8FC",
+    "runtimeVersion": "1.0.8",
+    "updates": {
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
+    "icon": "./src/assets/images/etkinlink-app-icon.png",
     "android": {
       "package": "com.etkinlink.app",
-      "versionCode": 1,
+      "versionCode": 9,
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
-        "foregroundImage": "./src/assets/images/etkinlink-symbol.png",
+        "foregroundImage": "./src/assets/images/etkinlink-adaptive-foreground.png",
         "backgroundColor": "#F7F8FC"
       }
     },
     "ios": {
       "bundleIdentifier": "com.etkinlink.app",
-      "buildNumber": "1",
-      "supportsTablet": false
+      "buildNumber": "9",
+      "supportsTablet": false,
+      "icon": "./src/assets/images/etkinlink-app-icon.png"
     },
     "plugins": [
       "expo-font",
       [
+        "expo-notifications",
+        {
+          "icon": "./src/assets/images/etkinlink-notification-icon.png",
+          "color": "#5B4BFF",
+          "defaultChannel": "system-v2"
+        }
+      ],
+      [
         "expo-splash-screen",
         {
-          "image": "./src/assets/images/etkinlink-symbol.png",
-          "imageWidth": 200,
+          "image": "./src/assets/images/etkinlink-logo.png",
+          "imageWidth": 280,
           "resizeMode": "contain",
-          "backgroundColor": "#F7F8FC"
+          "backgroundColor": "#F7F8FC",
+          "android": {
+            "image": "./src/assets/images/etkinlink-logo.png",
+            "imageWidth": 208,
+            "resizeMode": "contain",
+            "backgroundColor": "#F7F8FC"
+          },
+          "ios": {
+            "image": "./src/assets/images/etkinlink-logo.png",
+            "imageWidth": 280,
+            "resizeMode": "contain",
+            "backgroundColor": "#F7F8FC"
+          }
         }
       ],
       [
@@ -37,7 +65,16 @@
           "photosPermission": "EtkinLink profil fotoğraflarını galerine kaydetmek için izin ister.",
           "savePhotosPermission": "EtkinLink seçtiğin profil fotoğrafını galerine kaydeder."
         }
-      ]
-    ]
+      ],
+      "expo-image",
+      "@sentry/react-native",
+      "expo-asset"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "a47f42fd-67ac-4f93-b6cd-8014abaa3e70"
+      }
+    },
+    "owner": "cayann"
   }
 }

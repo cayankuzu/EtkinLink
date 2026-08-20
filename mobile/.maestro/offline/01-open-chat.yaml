@@ -1,0 +1,31 @@
+appId: com.etkinlink.app
+name: Offline testi için sohbeti aç
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible:
+      id: welcome-sign-in
+    timeout: 20000
+- tapOn:
+    id: welcome-sign-in
+- tapOn:
+    id: sign-in-email
+- inputText: ${E2E_EMAIL}
+- tapOn:
+    id: sign-in-password
+- inputText: ${E2E_PASSWORD}
+- hideKeyboard
+- tapOn:
+    id: sign-in-submit
+- extendedWaitUntil:
+    visible:
+      id: discover-screen
+    timeout: 30000
+- tapOn: Mesajlar
+- extendedWaitUntil:
+    visible:
+      id: messages-screen
+    timeout: 15000
+- tapOn: ${E2E_MATCH_NAME} özel sohbetini aç
+- assertVisible: Özel mesaj yaz

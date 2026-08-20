@@ -2,6 +2,7 @@ import {
   normalizeTurkishSearch,
   TURKISH_CITIES,
 } from '@shared/constants/cities';
+import { fetchWithTimeout } from '@shared/lib/network';
 import type { Event, EventSourceDetails } from '@shared/types/domain';
 import {
   addDays,
@@ -295,7 +296,7 @@ function parseRssCatalog(html: string): RssCatalog {
 
 async function getRssCatalog(): Promise<RssCatalog> {
   if (catalogRequest) return catalogRequest;
-  catalogRequest = fetch(etkinlikIoRssInfoUrl, {
+  catalogRequest = fetchWithTimeout(etkinlikIoRssInfoUrl, {
     headers: { Accept: 'text/html,application/xhtml+xml' },
   }).then(async response => {
     if (!response.ok) throw new Error('RSS filtre kataloğu yüklenemedi.');
@@ -470,7 +471,7 @@ async function fetchRssUrl(url: string): Promise<Event[]> {
   }
   const activeRequest = feedRequests.get(url);
   if (activeRequest) return activeRequest;
-  const request = fetch(url, {
+  const request = fetchWithTimeout(url, {
     headers: { Accept: 'application/rss+xml, application/xml;q=0.9' },
   })
     .then(async response => {
@@ -732,7 +733,7 @@ export async function getRssEvent(eventId: string): Promise<Event> {
   if (!event) throw new Error('Etkinlik RSS akışında bulunamadı.');
   const existing = detailRequests.get(eventId);
   if (existing) return existing;
-  const request = fetch(event.sourceUrl, {
+  const request = fetchWithTimeout(event.sourceUrl, {
     headers: { Accept: 'text/html,application/xhtml+xml' },
   })
     .then(async response => {

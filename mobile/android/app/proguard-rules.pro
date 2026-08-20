@@ -8,3 +8,7 @@
 #   http://developer.android.com/guide/developing/tools/proguard.html
 
 # Add any project specific keep options here:
+
+# react-native-config reads application BuildConfig fields through reflection.
+# R8 cannot infer that access and would otherwise remove the Supabase values.
+-keep class com.etkinlink.app.BuildConfig { *; }

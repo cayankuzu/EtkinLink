@@ -36,7 +36,7 @@ export function AppText({
   tone = 'primary',
   align,
   style,
-  maxFontSizeMultiplier = 1.6,
+  maxFontSizeMultiplier = 2,
   children,
   ...props
 }: AppTextProps) {

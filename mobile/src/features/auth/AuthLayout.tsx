@@ -160,7 +160,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accentSoft,
   },
   header: {
-    height: 52,
+    height: 48,
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -187,8 +187,8 @@ const styles = StyleSheet.create({
   },
   brandImage: { width: 30, height: 30, borderRadius: radius.sm },
   standardTitle: { flex: 1, marginLeft: spacing.sm },
-  spacer: { width: 48 },
-  heroCopy: { gap: spacing.sm, paddingVertical: spacing.md },
+  spacer: { width: 44 },
+  heroCopy: { gap: spacing.xs, paddingVertical: spacing.sm },
   eyebrowBadge: {
     alignSelf: 'flex-start',
     minHeight: 28,
@@ -209,7 +209,7 @@ const styles = StyleSheet.create({
   },
   heroTitle: { maxWidth: 320, letterSpacing: -0.7 },
   description: { maxWidth: 340 },
-  form: { flexGrow: 1, gap: spacing.md },
+  form: { flexGrow: 1, gap: spacing.sm },
   formCard: {
     flexGrow: 0,
     marginTop: spacing.xs,

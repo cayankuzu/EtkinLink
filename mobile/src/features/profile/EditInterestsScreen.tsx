@@ -14,6 +14,7 @@ import {
   Skeleton,
 } from '@shared/components';
 import { toAppError } from '@shared/lib/errors';
+import { queryKeys } from '@shared/lib/queryKeys';
 import { spacing } from '@shared/theme';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react-native';
@@ -28,11 +29,11 @@ export function EditInterestsScreen({ navigation }: Props) {
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<string[]>([]);
   const profile = useQuery({
-    queryKey: ['profile', 'current'],
+    queryKey: queryKeys.profile.current,
     queryFn: () => getProfile(),
   });
   const interests = useQuery({
-    queryKey: ['interests'],
+    queryKey: queryKeys.profile.interests,
     queryFn: listInterests,
     staleTime: 24 * 60 * 60_000,
   });
@@ -42,7 +43,7 @@ export function EditInterestsScreen({ navigation }: Props) {
   const save = useMutation({
     mutationFn: () => saveInterests(selected),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['profile'] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.profile.all });
       navigation.goBack();
     },
   });
@@ -114,7 +115,7 @@ export function EditInterestsScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   screen: { padding: spacing.md, gap: spacing.md },
   header: {
-    height: 52,
+    height: 48,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

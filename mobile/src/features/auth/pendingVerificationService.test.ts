@@ -17,11 +17,11 @@ jest.mock('@shared/lib/secureStorage', () => ({
 }));
 
 jest.mock('@shared/lib/supabase', () => ({
-  supabase: { auth: { signInWithPassword: jest.fn() } },
+  supabase: { auth: { getSession: jest.fn() } },
 }));
 
 const storage = jest.mocked(secureStorage);
-const signInWithPassword = jest.mocked(supabase.auth.signInWithPassword);
+const getSession = jest.mocked(supabase.auth.getSession);
 
 describe('bekleyen e-posta doğrulaması', () => {
   let storedValue: string | null;
@@ -39,19 +39,20 @@ describe('bekleyen e-posta doğrulaması', () => {
   });
 
   it('bekleyen hesabı cihazın güvenli deposunda saklar', async () => {
-    await persistPendingVerification(' Test@Example.com ', 'Guvenli1234');
+    await persistPendingVerification(' Test@Example.com ');
 
     await expect(getPendingVerificationEmail()).resolves.toBe(
       'test@example.com',
     );
     expect(storedValue).not.toContain(' Test@Example.com ');
+    expect(storedValue).not.toContain('Guvenli1234');
   });
 
-  it('e-posta henüz onaylanmadığında oturum açmaz', async () => {
-    await persistPendingVerification('test@example.com', 'Guvenli1234');
-    signInWithPassword.mockResolvedValueOnce({
-      data: { user: null, session: null },
-      error: { code: 'email_not_confirmed' },
+  it('e-posta callback ile oturum oluşmadan önce bekleyen durumda kalır', async () => {
+    await persistPendingVerification('test@example.com');
+    getSession.mockResolvedValueOnce({
+      data: { session: null },
+      error: null,
     } as never);
 
     await expect(checkPendingVerification('test@example.com')).resolves.toBe(
@@ -60,10 +61,15 @@ describe('bekleyen e-posta doğrulaması', () => {
     expect(storedValue).not.toBeNull();
   });
 
-  it('onaylanan hesapta oturum açar ve geçici parolayı siler', async () => {
-    await persistPendingVerification('test@example.com', 'Guvenli1234');
-    signInWithPassword.mockResolvedValueOnce({
-      data: { user: { id: 'user-id' }, session: { access_token: 'token' } },
+  it('PKCE callback sonrası oturumu görür ve bekleyen e-postayı siler', async () => {
+    await persistPendingVerification('test@example.com');
+    getSession.mockResolvedValueOnce({
+      data: {
+        session: {
+          access_token: 'token',
+          user: { id: 'user-id', email: 'test@example.com' },
+        },
+      },
       error: null,
     } as never);
 
@@ -72,22 +78,6 @@ describe('bekleyen e-posta doğrulaması', () => {
     );
     expect(storage.removeItem).toHaveBeenCalled();
     expect(storedValue).toBeNull();
-  });
-
-  it('eski kayıt şifresi uyuşmadığında kurtarılabilir durum döndürür', async () => {
-    await persistPendingVerification('test@example.com', 'YeniGuvenli1234');
-    signInWithPassword.mockResolvedValueOnce({
-      data: { user: null, session: null },
-      error: {
-        code: 'invalid_credentials',
-        message: 'Invalid login credentials',
-      },
-    } as never);
-
-    await expect(checkPendingVerification('test@example.com')).resolves.toBe(
-      'credentials_invalid',
-    );
-    expect(storedValue).not.toBeNull();
   });
 
   it('eşzamanlı temizleme isteklerini tek bir güvenli depo işleminde birleştirir', async () => {

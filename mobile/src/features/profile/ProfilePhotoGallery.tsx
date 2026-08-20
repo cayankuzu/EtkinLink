@@ -1,4 +1,4 @@
-import { AppText, IconButton } from '@shared/components';
+import { AppImage, AppText, IconButton } from '@shared/components';
 import { colors, radius, spacing } from '@shared/theme';
 import type { ProfilePhoto } from '@shared/types/domain';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -21,7 +21,6 @@ import type {
 } from 'react-native';
 import {
   Alert,
-  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -172,10 +171,10 @@ export function ProfilePhotoGallery({
                 disabled={!allowFullscreen}
                 onPress={() => openPhoto(activeIndex)}
               >
-                <Image
-                  source={{ uri: photos[activeIndex]?.url }}
+                <AppImage
+                  uri={photos[activeIndex]?.url}
                   style={squareStyle}
-                  resizeMode="cover"
+                  fit="cover"
                   accessibilityIgnoresInvertColors
                 />
               </Pressable>
@@ -231,10 +230,10 @@ export function ProfilePhotoGallery({
                   }. Büyütmek için dokun`}
                   onPress={() => openPhoto(index)}
                 >
-                  <Image
-                    source={{ uri: photo.url }}
+                  <AppImage
+                    uri={photo.url}
                     style={squareStyle}
-                    resizeMode="cover"
+                    fit="cover"
                     accessibilityIgnoresInvertColors
                   />
                 </Pressable>
@@ -317,10 +316,10 @@ export function ProfilePhotoGallery({
                 key={photo.id}
                 style={[styles.fullscreenPage, { width: screenWidth }]}
               >
-                <Image
-                  source={{ uri: photo.url }}
+                <AppImage
+                  uri={photo.url}
                   style={styles.fullscreenImage}
-                  resizeMode="contain"
+                  fit="contain"
                   accessibilityIgnoresInvertColors
                 />
               </View>
@@ -390,7 +389,7 @@ const styles = StyleSheet.create({
   },
   fullscreen: { flex: 1, backgroundColor: '#050505' },
   fullscreenHeader: {
-    minHeight: 64,
+    minHeight: 56,
     paddingHorizontal: spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
@@ -403,7 +402,7 @@ const styles = StyleSheet.create({
   fullscreenPage: { flex: 1, justifyContent: 'center' },
   fullscreenImage: { width: '100%', height: '100%' },
   actionHint: {
-    minHeight: 52,
+    minHeight: 48,
     paddingBottom: spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
