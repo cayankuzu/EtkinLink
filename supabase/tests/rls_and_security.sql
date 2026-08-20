@@ -110,7 +110,7 @@ select is(
   'Profil fotoğrafı bucketı private kalır'
 );
 
-select like(
+select ok(
   coalesce(
     (
       select qual
@@ -120,8 +120,7 @@ select like(
         and policyname = 'profile_photo_storage_delete'
     ),
     ''
-  ),
-  '%auth.uid()%',
+  ) like '%auth.uid()%',
   'Storage silme politikası kullanıcı klasörüne bağlıdır'
 );
 
