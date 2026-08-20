@@ -372,9 +372,9 @@ select is(
   'User C başka kullanıcının beğenisini göremez'
 );
 
-select lives_ok(
-  $$ select public.delete_my_account() $$,
-  'Kullanıcı kendi hesabını kontrollü SECURITY DEFINER sınırından silebilir'
+select ok(
+  to_regprocedure('public.delete_my_account()') is null,
+  'Hesap silme DB RPC yerine Edge Function admin sınırında kalır'
 );
 
 reset role;
@@ -384,8 +384,8 @@ select is(
     from auth.users
     where id = '00000000-0000-4000-8000-000000000003'
   ),
-  0::bigint,
-  'Hesap silme auth.users kaydını ve bağlı profili gerçekten kaldırır'
+  1::bigint,
+  'Kaldırılan DB RPC auth.users kaydını silemez'
 );
 
 set local role service_role;
