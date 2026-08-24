@@ -10,6 +10,8 @@ permissions:
 
 jobs:
   sentry-alerts:
+    # Keep scheduled checks disabled until the required Sentry credentials exist.
+    if: github.event_name == 'workflow_dispatch' || vars.SENTRY_MONITORING_ENABLED == 'true'
     runs-on: ubuntu-latest
     environment: production-monitoring
     defaults:
