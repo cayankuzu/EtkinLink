@@ -1,0 +1,196 @@
+name: EAS Update production validation (publication blocked)
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: "Exact full SHA tested by the preview workflow"
+        required: true
+        type: string
+      base_sha:
+        description: "Exact full native/release baseline SHA used by preview classification"
+        required: true
+        type: string
+      preview_run_id:
+        description: "Successful eas-update-preview.yml run ID for this SHA"
+        required: true
+        type: string
+      native_release_run_id:
+        description: "Successful same-SHA mobile-release.yml run with code-signing-aware AAB and IPA"
+        required: true
+        type: string
+      preview_runtime_evidence_reference:
+        description: "Path or URL reviewed by the production environment approver"
+        required: true
+        type: string
+      ota_signing_evidence_reference:
+        description: "Reviewed same-SHA valid/invalid signature device evidence path or URL"
+        required: true
+        type: string
+      rollout_percentage:
+        description: "Initial EAS rollout percentage (1-100)"
+        required: true
+        default: "10"
+        type: string
+      confirmation:
+        description: "Type ACKNOWLEDGE_OTA_PUBLICATION_BLOCKED"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: eas-update-production
+  cancel-in-progress: false
+
+jobs:
+  validate-production-no-publish:
+    if: inputs.confirmation == 'ACKNOWLEDGE_OTA_PUBLICATION_BLOCKED'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment: production
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.target_sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - name: Verify immutable production candidate
+        id: immutable
+        shell: bash
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
+          BASE_SHA: ${{ inputs.base_sha }}
+          ROLLOUT_PERCENTAGE: ${{ inputs.rollout_percentage }}
+        run: |
+          set -euo pipefail
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$ROLLOUT_PERCENTAGE" =~ ^[0-9]+$ ]]
+          (( ROLLOUT_PERCENTAGE >= 1 && ROLLOUT_PERCENTAGE <= 100 ))
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git cat-file -e "${BASE_SHA}^{commit}"
+          git merge-base --is-ancestor "$BASE_SHA" "$TARGET_SHA"
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$TARGET_SHA" origin/main
+          test -z "$(git status --porcelain --untracked-files=all)"
+          echo "sha=$TARGET_SHA" >> "$GITHUB_OUTPUT"
+      - name: Download and validate preview evidence
+        shell: bash
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREVIEW_RUN_ID: ${{ inputs.preview_run_id }}
+          TARGET_SHA: ${{ inputs.target_sha }}
+          BASE_SHA: ${{ inputs.base_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$PREVIEW_RUN_ID" =~ ^[0-9]+$ ]]
+          mkdir -p artifacts/preview-proof
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${PREVIEW_RUN_ID}" > artifacts/preview-proof/run.json
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const run = JSON.parse(readFileSync('artifacts/preview-proof/run.json', 'utf8'));
+          if (run.conclusion !== 'success') throw new Error('Preview run did not succeed.');
+          if (run.head_sha !== process.env.TARGET_SHA) throw new Error('Preview run SHA mismatch.');
+          if (!String(run.path ?? '').endsWith('/eas-update-preview.yml')) {
+            throw new Error('Run is not eas-update-preview.yml.');
+          }
+          NODE
+          gh run download "$PREVIEW_RUN_ID" --dir artifacts/preview-proof/download
+          PREVIEW_METADATA="$(find artifacts/preview-proof/download -type f -name metadata.json -print -quit)"
+          test -n "$PREVIEW_METADATA"
+          PREVIEW_METADATA="$PREVIEW_METADATA" node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const metadata = JSON.parse(readFileSync(process.env.PREVIEW_METADATA, 'utf8'));
+          const expected = {
+            targetSha: process.env.TARGET_SHA,
+            baseSha: process.env.BASE_SHA,
+            classification: 'OTA_SAFE',
+            channel: 'preview',
+            environment: 'preview',
+            workflowRunId: process.env.PREVIEW_RUN_ID,
+          };
+          for (const [key, value] of Object.entries(expected)) {
+            if (String(metadata[key]) !== String(value)) throw new Error(`Preview metadata mismatch: ${key}`);
+          }
+          if (!metadata.groupId) throw new Error('Preview group ID is missing.');
+          if (!/^\d+$/u.test(String(metadata.qualityRunId ?? ''))) throw new Error('Preview quality run ID is missing.');
+          NODE
+      - name: Require same-SHA code-signing-aware native release evidence
+        shell: bash
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NATIVE_RELEASE_RUN_ID: ${{ inputs.native_release_run_id }}
+          TARGET_SHA: ${{ inputs.target_sha }}
+          OTA_SIGNING_EVIDENCE_REFERENCE: ${{ inputs.ota_signing_evidence_reference }}
+        run: |
+          set -euo pipefail
+          [[ "$NATIVE_RELEASE_RUN_ID" =~ ^[0-9]+$ ]]
+          test -n "${OTA_SIGNING_EVIDENCE_REFERENCE//[[:space:]]/}"
+          mkdir -p artifacts/native-release-proof
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${NATIVE_RELEASE_RUN_ID}" \
+            > artifacts/native-release-proof/run.json
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${NATIVE_RELEASE_RUN_ID}/artifacts?per_page=100" \
+            > artifacts/native-release-proof/artifacts.json
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const run = JSON.parse(readFileSync('artifacts/native-release-proof/run.json', 'utf8'));
+          if (run.conclusion !== 'success') throw new Error('Native release run did not succeed.');
+          if (run.head_sha !== process.env.TARGET_SHA) throw new Error('Native release SHA mismatch.');
+          if (!String(run.path ?? '').endsWith('/mobile-release.yml')) {
+            throw new Error('Run is not mobile-release.yml.');
+          }
+          const payload = JSON.parse(readFileSync('artifacts/native-release-proof/artifacts.json', 'utf8'));
+          const artifacts = new Map((payload.artifacts ?? []).map(item => [item.name, item]));
+          for (const name of ['etkinlink-production-aab', 'etkinlink-production-ipa-evidence']) {
+            const artifact = artifacts.get(name);
+            if (!artifact || artifact.expired || Number(artifact.size_in_bytes) <= 0) {
+              throw new Error(`Required native release artifact is unavailable: ${name}`);
+            }
+          }
+          NODE
+      - name: Enforce frozen product surface
+        working-directory: .
+        run: node scripts/guards/check-no-new-product-surface.mjs
+      - run: npm ci
+      - name: Re-run mobile quality gates at promoted SHA
+        run: npm run verify
+      - name: Validate production native edge origin contract
+        shell: bash
+        env:
+          EDGE_API_BASE_URL: ${{ vars.EDGE_API_BASE_URL }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const value = process.env.EDGE_API_BASE_URL ?? '';
+          if (value) {
+            const url = new URL(value);
+            if (url.protocol !== 'https:' || url.origin !== value.replace(/\/$/u, '') || url.pathname !== '/' || url.search || url.hash || url.username || url.password) {
+              throw new Error('EDGE_API_BASE_URL must be a bare HTTPS origin.');
+            }
+          }
+          NODE
+          npm run release:check -- --require-ota-signing
+      - name: Re-run OTA classification at promoted SHA
+        env:
+          OTA_BASE_SHA: ${{ inputs.base_sha }}
+          OTA_HEAD_SHA: ${{ inputs.target_sha }}
+        run: node scripts/classify-update.mjs --assert-ota-safe
+      - name: Block production OTA publication until trust design is proven
+        shell: bash
+        working-directory: .
+        run: |
+          echo "::error::Production OTA publication is intentionally blocked. Preview signing isolation, exact native certificate embedding, same-SHA AAB/IPA evidence, valid/invalid-signature device evidence, and rollback proof must all be runtime-tested first."
+          echo "This workflow contains no EAS publish command and does not read a private signing key. Release remains NO-GO."
+          exit 1

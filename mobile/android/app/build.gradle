@@ -64,6 +64,16 @@ react {
     /* Hermes Commands */
     //   The hermes compiler command to run. By default it is 'hermesc'
     // hermesCommand = "$rootDir/my-custom-hermesc/bin/hermesc"
+    //   Managed Windows devices can provide an approved, bytecode-compatible
+    //   compiler without changing the dependency tree used by CI.
+    def configuredHermesCommand = System.getenv("ETKINLINK_HERMES_COMMAND")
+    if (configuredHermesCommand) {
+        def configuredHermesCompiler = file(configuredHermesCommand)
+        if (!configuredHermesCompiler.exists()) {
+            throw new GradleException("ETKINLINK_HERMES_COMMAND must point to an existing file.")
+        }
+        hermesCommand = configuredHermesCompiler.absolutePath
+    }
     //
     //   The list of flags to pass to the Hermes compiler. By default is "-O", "-output-source-map"
     // hermesFlags = ["-O", "-output-source-map"]
@@ -111,8 +121,8 @@ android {
         applicationId "com.etkinlink.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 9
-        versionName "1.0.8"
+        versionCode 10
+        versionName "1.0.9"
     }
     signingConfigs {
         debug {

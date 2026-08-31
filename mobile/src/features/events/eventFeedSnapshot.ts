@@ -3,18 +3,47 @@ import * as FileSystem from 'expo-file-system/legacy';
 
 import type { EventFilters } from './eventTypes';
 
-const snapshotUri = FileSystem.cacheDirectory
+const legacySnapshotUri = FileSystem.cacheDirectory
   ? `${FileSystem.cacheDirectory}event-feed-snapshot-v1.json`
+  : null;
+const snapshotUri = FileSystem.cacheDirectory
+  ? `${FileSystem.cacheDirectory}event-feed-snapshot-v2.json`
   : null;
 const snapshotMaxAgeMs = 24 * 60 * 60 * 1000;
 
 type EventFeedSnapshot = {
-  version: 1;
+  version: 2;
   viewerId: string;
   filterKey: string;
   storedAt: number;
   items: Event[];
 };
+
+function sanitizeEventForSnapshot(event: Event): Event {
+  const snapshot = { ...event, joined: false, saved: false };
+  delete snapshot.attendeePhotoUrls;
+  return snapshot;
+}
+
+async function removeSnapshot(uri: string | null): Promise<void> {
+  if (!uri) return;
+  await FileSystem.deleteAsync(uri, { idempotent: true });
+}
+
+async function removeSnapshotBestEffort(uri: string | null): Promise<void> {
+  try {
+    await removeSnapshot(uri);
+  } catch {
+    // Snapshot cleanup is best-effort when the operating system owns the cache.
+  }
+}
+
+export async function clearEventFeedSnapshot(): Promise<void> {
+  await Promise.all([
+    removeSnapshot(snapshotUri),
+    removeSnapshot(legacySnapshotUri),
+  ]);
+}
 
 function serializeFilters(filters: EventFilters): string {
   return JSON.stringify({
@@ -33,22 +62,25 @@ export async function loadEventFeedSnapshot(
   filters: EventFilters,
 ): Promise<Event[] | null> {
   if (!snapshotUri) return null;
+  await removeSnapshotBestEffort(legacySnapshotUri);
   try {
     const value = JSON.parse(
       await FileSystem.readAsStringAsync(snapshotUri),
     ) as Partial<EventFeedSnapshot>;
     if (
-      value.version !== 1 ||
+      value.version !== 2 ||
       value.viewerId !== viewerId ||
       value.filterKey !== serializeFilters(filters) ||
       typeof value.storedAt !== 'number' ||
       Date.now() - value.storedAt > snapshotMaxAgeMs ||
       !Array.isArray(value.items)
     ) {
+      await removeSnapshotBestEffort(snapshotUri);
       return null;
     }
-    return value.items;
+    return value.items.map(sanitizeEventForSnapshot);
   } catch {
+    await removeSnapshotBestEffort(snapshotUri);
     return null;
   }
 }
@@ -58,13 +90,18 @@ export async function saveEventFeedSnapshot(
   filters: EventFilters,
   items: Event[],
 ): Promise<void> {
-  if (!snapshotUri || items.length === 0) return;
+  if (!snapshotUri) return;
+  await removeSnapshotBestEffort(legacySnapshotUri);
+  if (items.length === 0) {
+    await removeSnapshotBestEffort(snapshotUri);
+    return;
+  }
   const value: EventFeedSnapshot = {
-    version: 1,
+    version: 2,
     viewerId,
     filterKey: serializeFilters(filters),
     storedAt: Date.now(),
-    items,
+    items: items.map(sanitizeEventForSnapshot),
   };
   try {
     await FileSystem.writeAsStringAsync(snapshotUri, JSON.stringify(value));

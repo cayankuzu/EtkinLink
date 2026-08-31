@@ -1,5 +1,7 @@
 # Production hazırlık özeti
 
+> Güncel ve kanonik karar [release-readiness.md](release-readiness.md), dış sistem adımları [MANUAL_STEPS.md](MANUAL_STEPS.md), açık riskler [risk-register.md](risk-register.md) içindedir. Aşağıdaki eski ölçümler mevcut commit için release kanıtı değildir. Güncel karar **NO-GO**'dur.
+
 | Alan                    | Repo durumu                                                                 | Dış kanıt                                       | Karar    |
 | ----------------------- | --------------------------------------------------------------------------- | ----------------------------------------------- | -------- |
 | Push dispatcher/receipt | Batch claim, timeout/retry, receipt state machine, Vault auth ve cron hazır | Staging deploy + gerçek cihaz teslimi yok       | Bekliyor |

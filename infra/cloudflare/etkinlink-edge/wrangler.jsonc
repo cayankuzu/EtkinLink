@@ -1,0 +1,142 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "etkinlink-edge-local",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-30",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+  },
+  "vars": {
+    "ENVIRONMENT": "local",
+    "ORIGIN_BASE_URL": "https://local-supabase.invalid/functions/v1",
+    "JWT_ISSUER": "https://local-supabase.invalid/auth/v1",
+    "JWT_AUDIENCE": "authenticated",
+    "JWKS_URL": "https://local-supabase.invalid/auth/v1/.well-known/jwks.json",
+    "ALLOWED_ORIGINS": "http://localhost:8081,http://localhost:19006",
+    "ORIGIN_TIMEOUT_MS": "12000",
+    "MAX_ORIGIN_RESPONSE_BYTES": "1572864",
+  },
+  "ratelimits": [
+    {
+      "name": "API_RATE_LIMITER",
+      "namespace_id": "310001",
+      "simple": { "limit": 120, "period": 60 },
+    },
+    {
+      "name": "INGEST_RATE_LIMITER",
+      "namespace_id": "310002",
+      "simple": { "limit": 1, "period": 60 },
+    },
+  ],
+  "env": {
+    "development": {
+      "name": "etkinlink-edge-development",
+      "workers_dev": true,
+      "preview_urls": false,
+      "routes": [
+        { "pattern": "api-dev.etkinlink.app/*", "zone_name": "etkinlink.app" },
+      ],
+      "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1,
+      },
+      "vars": {
+        "ENVIRONMENT": "development",
+        "ORIGIN_BASE_URL": "https://development-supabase.invalid/functions/v1",
+        "JWT_ISSUER": "https://development-supabase.invalid/auth/v1",
+        "JWT_AUDIENCE": "authenticated",
+        "JWKS_URL": "https://development-supabase.invalid/auth/v1/.well-known/jwks.json",
+        "ALLOWED_ORIGINS": "http://localhost:8081,http://localhost:19006",
+        "ORIGIN_TIMEOUT_MS": "12000",
+        "MAX_ORIGIN_RESPONSE_BYTES": "1572864",
+      },
+      "ratelimits": [
+        {
+          "name": "API_RATE_LIMITER",
+          "namespace_id": "310101",
+          "simple": { "limit": 240, "period": 60 },
+        },
+        {
+          "name": "INGEST_RATE_LIMITER",
+          "namespace_id": "310102",
+          "simple": { "limit": 1, "period": 60 },
+        },
+      ],
+    },
+    "preview": {
+      "name": "etkinlink-edge-preview",
+      "workers_dev": false,
+      "preview_urls": true,
+      "routes": [
+        {
+          "pattern": "api-preview.etkinlink.app/*",
+          "zone_name": "etkinlink.app",
+        },
+      ],
+      "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1,
+      },
+      "vars": {
+        "ENVIRONMENT": "preview",
+        "ORIGIN_BASE_URL": "https://preview-supabase.invalid/functions/v1",
+        "JWT_ISSUER": "https://preview-supabase.invalid/auth/v1",
+        "JWT_AUDIENCE": "authenticated",
+        "JWKS_URL": "https://preview-supabase.invalid/auth/v1/.well-known/jwks.json",
+        "ALLOWED_ORIGINS": "https://preview.etkinlink.app",
+        "ORIGIN_TIMEOUT_MS": "12000",
+        "MAX_ORIGIN_RESPONSE_BYTES": "1572864",
+      },
+      "ratelimits": [
+        {
+          "name": "API_RATE_LIMITER",
+          "namespace_id": "310201",
+          "simple": { "limit": 120, "period": 60 },
+        },
+        {
+          "name": "INGEST_RATE_LIMITER",
+          "namespace_id": "310202",
+          "simple": { "limit": 1, "period": 60 },
+        },
+      ],
+    },
+    "production": {
+      "name": "etkinlink-edge-production",
+      "workers_dev": false,
+      "preview_urls": false,
+      "routes": [
+        { "pattern": "api.etkinlink.app/*", "zone_name": "etkinlink.app" },
+      ],
+      "observability": {
+        "enabled": true,
+        "head_sampling_rate": 0.1,
+      },
+      "vars": {
+        "ENVIRONMENT": "production",
+        "ORIGIN_BASE_URL": "https://production-supabase.invalid/functions/v1",
+        "JWT_ISSUER": "https://production-supabase.invalid/auth/v1",
+        "JWT_AUDIENCE": "authenticated",
+        "JWKS_URL": "https://production-supabase.invalid/auth/v1/.well-known/jwks.json",
+        "ALLOWED_ORIGINS": "https://etkinlink.app",
+        "ORIGIN_TIMEOUT_MS": "12000",
+        "MAX_ORIGIN_RESPONSE_BYTES": "1572864",
+      },
+      "ratelimits": [
+        {
+          "name": "API_RATE_LIMITER",
+          "namespace_id": "310301",
+          "simple": { "limit": 120, "period": 60 },
+        },
+        {
+          "name": "INGEST_RATE_LIMITER",
+          "namespace_id": "310302",
+          "simple": { "limit": 1, "period": 60 },
+        },
+      ],
+    },
+  },
+}

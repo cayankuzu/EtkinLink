@@ -15,8 +15,11 @@ jest.mock('./secureStorage', () => ({
 import {
   enqueueOutbox,
   flushAllOutbox,
+  listDeadLetters,
   listOutbox,
   type OutboxMessage,
+  purgeAllOutbox,
+  purgeOutboxForOwner,
   removeFromOutbox,
 } from './chatOutbox';
 
@@ -124,6 +127,30 @@ describe('güvenli sohbet gönderim kuyruğu', () => {
     jest.useRealTimers();
   });
 
+  it('maksimum denemeden sonra dead-letter olur ve otomatik replay durur', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-08-19T12:00:00.000Z'));
+    await enqueueOutbox(message(1));
+    const sender = jest.fn(async () => {
+      throw new Error('provider unavailable');
+    });
+
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+      await flushAllOutbox('user-1', sender);
+      jest.advanceTimersByTime(Math.min(60 * 60_000, 2 ** attempt * 1_000));
+    }
+
+    expect(await listDeadLetters('user-1', 'direct', 'match-1')).toEqual([
+      expect.objectContaining({
+        attempt: 5,
+        deadLetteredAt: expect.any(String),
+      }),
+    ]);
+    await flushAllOutbox('user-1', sender);
+    expect(sender).toHaveBeenCalledTimes(5);
+    jest.useRealTimers();
+  });
+
   it('aynı kullanıcı için eşzamanlı flush taleplerini tek replay uçuşunda birleştirir', async () => {
     await enqueueOutbox(message(1));
     let completeDelivery: () => void = () => undefined;
@@ -184,6 +211,32 @@ describe('güvenli sohbet gönderim kuyruğu', () => {
     expect(await listOutbox('user-1', 'direct', 'match-1')).toEqual([
       recoverable,
     ]);
+    expect(mockStorage.has('chat-outbox-v1-backup')).toBe(false);
+  });
+});
+
+describe('outbox privacy purge', () => {
+  beforeEach(() => mockStorage.clear());
+
+  it("purges one owner without deleting another owner's messages", async () => {
+    await enqueueOutbox(message(1));
+    await enqueueOutbox(message(2, { ownerId: 'user-2' }));
+
+    await purgeOutboxForOwner('user-1');
+
+    expect(await listOutbox('user-1', 'direct', 'match-1')).toEqual([]);
+    expect(await listOutbox('user-2', 'direct', 'match-1')).toEqual([
+      expect.objectContaining({ clientMessageId: 'client-2' }),
+    ]);
+  });
+
+  it('purges both primary and backup outbox storage', async () => {
+    await enqueueOutbox(message(1));
+    mockStorage.set('chat-outbox-v1-backup', JSON.stringify([message(2)]));
+
+    await purgeAllOutbox();
+
+    expect(mockStorage.has('chat-outbox-v1')).toBe(false);
     expect(mockStorage.has('chat-outbox-v1-backup')).toBe(false);
   });
 });

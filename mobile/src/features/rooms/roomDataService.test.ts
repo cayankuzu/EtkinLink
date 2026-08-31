@@ -123,13 +123,21 @@ describe('roomService davranış regresyonları', () => {
       sendRoomMessage('event-1', 'Merhaba', 'client-1'),
     ).resolves.toBe(sent);
     await expect(markRoomRead('event-1')).resolves.toBeUndefined();
-    await expect(submitRoomReport('event-1')).rejects.toMatchObject({
+    await expect(
+      submitRoomReport('event-1', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
+    ).rejects.toMatchObject({
       message: 'rapor reddedildi',
     });
     expect(mockRpc).toHaveBeenNthCalledWith(1, 'send_room_message', {
       target_event_id: 'event-1',
       message_body: 'Merhaba',
       client_message_id: 'client-1',
+    });
+    expect(mockRpc).toHaveBeenNthCalledWith(3, 'submit_room_report', {
+      target_event_id: 'event-1',
+      reason: 'other',
+      details: expect.any(String),
+      client_request_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     });
   });
 

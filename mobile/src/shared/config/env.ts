@@ -25,6 +25,27 @@ export function isSupabasePublishableKey(value: string | undefined): boolean {
   );
 }
 
+export function normalizeHttpsOrigin(value: string | undefined): string | null {
+  if (!value) return null;
+  try {
+    const parsed = new URL(value.trim());
+    if (
+      parsed.protocol !== 'https:' ||
+      !parsed.hostname ||
+      parsed.username ||
+      parsed.password ||
+      parsed.pathname !== '/' ||
+      parsed.search ||
+      parsed.hash
+    ) {
+      return null;
+    }
+    return parsed.origin;
+  } catch {
+    return null;
+  }
+}
+
 function boundedSampleRate(value: string | undefined): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 && parsed <= 1 ? parsed : 0.05;
@@ -32,6 +53,7 @@ function boundedSampleRate(value: string | undefined): number {
 
 const supabaseUrl = Config.SUPABASE_URL?.trim();
 const supabasePublishableKey = Config.SUPABASE_PUBLISHABLE_KEY?.trim();
+const edgeApiBaseUrl = normalizeHttpsOrigin(Config.EDGE_API_BASE_URL);
 
 export const env = {
   supabaseUrl: supabaseUrl || fallbackUrl,
@@ -39,6 +61,7 @@ export const env = {
   isSupabaseConfigured:
     isSecureBackendUrl(supabaseUrl) &&
     isSupabasePublishableKey(supabasePublishableKey),
+  edgeApiBaseUrl,
   sentryDsn: Config.SENTRY_DSN?.trim() || null,
   sentryTracesSampleRate: boundedSampleRate(
     Config.SENTRY_TRACES_SAMPLE_RATE?.trim(),

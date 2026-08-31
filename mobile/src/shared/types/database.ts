@@ -495,6 +495,7 @@ export type Database = {
           target_event_id: string;
           reason: string;
           details: string;
+          client_request_id?: string;
         };
         Returns: string;
       };
@@ -671,6 +672,7 @@ export type Database = {
           target_match_id?: string | null;
           client_context?: Json;
           block_after?: boolean;
+          client_request_id?: string;
         };
         Returns: string;
       };

@@ -35,6 +35,9 @@ const workflowActions = readdirSync(workflowsRoot)
       workflow: name,
     }));
   });
+const databaseTestPlan = Number(
+  databaseSecurityTests.match(/select\s+plan\((\d+)\);/iu)?.[1] ?? 0,
+);
 
 assert(
   !authService.includes("flowType: 'implicit'"),
@@ -54,12 +57,14 @@ assert(
 );
 assert(
   pushDispatcher.includes('PUSH_WORKER_SECRET') &&
-    pushDispatcher.includes('isAuthorizedWorker'),
+    pushDispatcher.includes('authorizeWorkerRequest') &&
+    pushDispatcher.includes('consume_push_worker_nonce'),
   'Push dispatcher worker secret doğrulaması yapmalı.',
 );
 assert(
   pushReceipts.includes('PUSH_WORKER_SECRET') &&
-    pushReceipts.includes('isAuthorizedWorker'),
+    pushReceipts.includes('authorizeWorkerRequest') &&
+    pushReceipts.includes('consume_push_worker_nonce'),
   'Push receipt worker secret doğrulaması yapmalı.',
 );
 assert(
@@ -68,7 +73,7 @@ assert(
   'Push dispatch/receipt kritik regresyon testleri korunmalı.',
 );
 assert(
-  databaseSecurityTests.includes('select plan(34);') &&
+  databaseTestPlan >= 44 &&
     databaseSecurityTests.includes(
       "has_table_privilege('anon', 'auth.users', 'SELECT')",
     ),

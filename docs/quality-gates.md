@@ -7,12 +7,14 @@
 - Jest global eşik havuzu statement `%36`, branch `%27`, function `%26`, line `%37` altında fail olur. Dosya-bazlı eşikler nedeniyle bu havuzun güncel sonucu sırasıyla `%37,02 / %27,71 / %26,90 / %38,39`dur.
 - Ayrı ratchet tüm-dosya kapsamını `%38 / %28 / %28 / %39` altına düşürmez; 17 değişen kritik uygulama/güvenlik modülünü ayrı sabit tabanlarla denetler.
 - `chatOutbox`, `compatibility` ve `roomRules` için Jest dosya eşikleri; daha geniş kritik modül listesi için `coverage:ratchet` fail-closed'dur.
-- pgTAP paketi 34 kontrolle anon/auth/service rol ayrımını, RLS/IDOR'u, `auth.users` görünmezliğini, storage/account-delete sınırlarını, enqueue dedupe'yi, push claim yetkilerini, mesaj idempotency ve rate-limit davranışını doğrular.
-- Deno kapısı tüm Edge Function girişlerini format/type-check eder ve 15 push worker testini çalıştırır.
-- Production dependency audit allowlist dışı high/critical bulguda durur. Yaması bulunmayan iki `image-size` advisory zinciri geçici allowlist altındadır.
+- Dört pgTAP dosyasındaki 174 kontrol anon/auth/service rol ayrımını, RLS/IDOR'u, moderasyon, recursive account deletion/Storage, push delivery/replay ve ingestion idempotency sınırlarını doğrular.
+- Deno kapısı production Function kaynaklarını lint eder, tüm Edge Function girişlerini format/type-check eder ve bounded HTTP, HMAC, push, ingestion ve account deletion için 56 testi çalıştırır.
+- Production dependency audit istisnasız biçimde herhangi bir high/critical bulguda durur; Metro `0.84.5` hizalamasıyla eski `image-size` allowlist'i kaldırılmıştır.
 - Release evidence kapısı aynı commit mobil CI artifact'ı, son 7 gün staging E2E artifact'ı ve son 30 gün 10K staging load artifact'ı arar.
 
-## 2026-08-19 yerel sonuç
+## 2026-08-19 tarihsel yerel sonuç
+
+> Bu bölüm yalnız tarihsel baseline'dır. Mevcut hardening commit'inin final test çıktısı değildir; test sayıları ve Doctor/audit sonucu değişmiş olabilir. Release kararı yalnız aynı SHA `mobile-ci.yml` ve [release-readiness.md](release-readiness.md) kanıtıyla verilir.
 
 - Jest: **42/42 suite, 229/229 test** geçti.
 - Gerçek tüm-dosya coverage: statement `%38,93`, branch `%29,52`, function `%28,78`, line `%40,25`.
@@ -27,6 +29,6 @@
 
 ## Dış kanıt bekleyen kapılar
 
-Docker kullanılmadı. Remote staging migration/lint/34 pgTAP, gerçek staging E2E, 25→250→10K load, fiziksel cihaz/VoiceOver/TalkBack/gerçek push, signed AAB/IPA, Sentry production ve store-console kanıtları tamamlanmadan release kararı **NO-GO** kalır.
+2026-08-30 yerel Docker koşusunda 53 migration sıfırdan uygulandı, `public` lint 0 bulgu verdi ve dört dosyada 174/174 pgTAP geçti. Bu yalnız yerel repository kanıtıdır. Remote staging migration/lint/pgTAP, gerçek staging E2E, 25→250→10K load, fiziksel cihaz/VoiceOver/TalkBack/gerçek push, signed AAB/IPA, Sentry production ve store-console kanıtları tamamlanmadan release kararı **NO-GO** kalır.
 
 Komut, prerequisite, artifact yolu ve PASS/FAIL ölçütleri [release-evidence-runbook.md](release-evidence-runbook.md) belgesindedir. Mock, statik inceleme veya geçmiş smoke sonucu bu dış kapıların yerine geçmez.

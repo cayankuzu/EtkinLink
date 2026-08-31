@@ -2,11 +2,22 @@ import {
   createClient,
   type SupabaseClient,
 } from "npm:@supabase/supabase-js@2.112.1";
-import { isAuthorizedWorker } from "../_shared/workerAuth.ts";
+import {
+  BoundedJsonError,
+  readBoundedJsonRequest,
+} from "../_shared/boundedJson.ts";
+import {
+  ExpoHttpError,
+  fetchExpoJsonWithRetry,
+  isTransientExpoStatus,
+} from "../_shared/expoHttp.ts";
+import { authorizeWorkerRequest } from "../_shared/workerAuth.ts";
 
 const EXPO_RECEIPTS_URL = "https://exp.host/--/api/v2/push/getReceipts";
 const MAX_RECEIPTS_PER_REQUEST = 300;
 const MAX_RECEIPT_ATTEMPTS = 5;
+const MAX_REQUEST_BODY_BYTES = 4 * 1024;
+const MAX_EXPO_RESPONSE_BYTES = 512 * 1024;
 const RETRYABLE_EXPO_ERRORS = new Set([
   "ExpoServerError",
   "InternalServerError",
@@ -37,6 +48,7 @@ export type PushReceiptDependencies = {
   getEnv?: (name: string) => string | undefined;
   createAdmin?: (url: string, serviceRoleKey: string) => SupabaseClient;
   fetch?: typeof fetch;
+  sleep?: (delayMs: number) => Promise<void>;
 };
 
 function jsonResponse(status: number, body: Record<string, unknown>): Response {
@@ -62,6 +74,98 @@ export function nextReceiptAttempt(attemptCount: number): string {
   return new Date(Date.now() + delayMinutes * 60_000).toISOString();
 }
 
+function boundedOptionalString(
+  value: unknown,
+  maxLength: number,
+): string | undefined {
+  return typeof value === "string" && value.length <= maxLength
+    ? value
+    : undefined;
+}
+
+function normalizeReceipt(rawReceipt: unknown): Receipt {
+  if (!rawReceipt || typeof rawReceipt !== "object") {
+    throw new Error("Expo receipt shape is invalid.");
+  }
+  const candidate = rawReceipt as Record<string, unknown>;
+  if (candidate.status !== "ok" && candidate.status !== "error") {
+    throw new Error("Expo receipt status is invalid.");
+  }
+  const message = boundedOptionalString(candidate.message, 500);
+  if (candidate.message !== undefined && message === undefined) {
+    throw new Error("Expo receipt message is invalid.");
+  }
+  let errorCode: string | undefined;
+  if (candidate.details !== undefined) {
+    if (!candidate.details || typeof candidate.details !== "object") {
+      throw new Error("Expo receipt details are invalid.");
+    }
+    const rawError = (candidate.details as Record<string, unknown>).error;
+    errorCode = boundedOptionalString(rawError, 120);
+    if (rawError !== undefined && errorCode === undefined) {
+      throw new Error("Expo receipt error code is invalid.");
+    }
+  }
+  if (candidate.status === "error" && !errorCode) {
+    throw new Error("Failed Expo receipt is missing an error code.");
+  }
+  if (candidate.status === "ok" && errorCode !== undefined) {
+    throw new Error("Successful Expo receipt includes an error code.");
+  }
+  return {
+    status: candidate.status,
+    ...(message !== undefined ? { message } : {}),
+    ...(errorCode !== undefined ? { details: { error: errorCode } } : {}),
+  };
+}
+
+function normalizeReceiptPayload(
+  payload: unknown,
+  requestedIds: string[],
+): Record<string, Receipt> {
+  if (!payload || typeof payload !== "object") {
+    throw new Error("Expo receipt response is invalid.");
+  }
+  const rawData = (payload as { data?: unknown }).data;
+  if (!rawData || typeof rawData !== "object" || Array.isArray(rawData)) {
+    throw new Error("Expo receipt response is missing data.");
+  }
+  const normalized: Record<string, Receipt> = {};
+  for (const ticketId of requestedIds) {
+    const rawReceipt = (rawData as Record<string, unknown>)[ticketId];
+    if (rawReceipt !== undefined) {
+      normalized[ticketId] = normalizeReceipt(rawReceipt);
+    }
+  }
+  return normalized;
+}
+
+async function persistPermanentReceiptFetchFailure(
+  admin: SupabaseClient,
+  deliveries: PendingDelivery[],
+  errorCode: string,
+): Promise<boolean> {
+  for (const delivery of deliveries) {
+    const nextAttemptCount = Math.min(
+      (delivery.receipt_attempt_count ?? 0) + 1,
+      MAX_RECEIPT_ATTEMPTS,
+    );
+    const { error } = await admin
+      .from("notification_deliveries")
+      .update({
+        receipt_status: "permanent_failure",
+        receipt_attempt_count: nextAttemptCount,
+        receipt_next_attempt_at: null,
+        receipt_checked_at: new Date().toISOString(),
+        receipt_error_code: errorCode,
+        error_message: null,
+      })
+      .eq("id", delivery.id);
+    if (error) return false;
+  }
+  return true;
+}
+
 export async function handlePushReceipts(
   request: Request,
   dependencies: PushReceiptDependencies = {},
@@ -73,6 +177,9 @@ export async function handlePushReceipts(
         auth: { persistSession: false, autoRefreshToken: false },
       }));
   const fetchImpl = dependencies.fetch ?? fetch;
+  const sleep = dependencies.sleep ??
+    ((delayMs: number) =>
+      new Promise<void>((resolve) => setTimeout(resolve, delayMs)));
   if (request.method !== "POST") {
     return jsonResponse(405, { error: "Yalnızca POST desteklenir." });
   }
@@ -82,11 +189,54 @@ export async function handlePushReceipts(
   if (!supabaseUrl || !serviceRoleKey || workerSecret.length < 32) {
     return jsonResponse(500, { error: "Sunucu yapılandırması eksik." });
   }
-  if (!isAuthorizedWorker(request, workerSecret)) {
+  let rawBody: string;
+  let requestBody: unknown;
+  try {
+    const parsed = await readBoundedJsonRequest(
+      request,
+      MAX_REQUEST_BODY_BYTES,
+    );
+    rawBody = parsed.rawBody;
+    requestBody = parsed.value;
+  } catch (error) {
+    if (error instanceof BoundedJsonError) {
+      return jsonResponse(error.status, { error: error.message });
+    }
+    return jsonResponse(400, { error: "Geçersiz JSON gövdesi." });
+  }
+  if (
+    !requestBody || typeof requestBody !== "object" ||
+    Array.isArray(requestBody) || Object.keys(requestBody).length !== 0
+  ) {
+    return jsonResponse(400, {
+      error: "Worker komutu tam olarak {} olmalıdır.",
+    });
+  }
+  const workerAuthorization = await authorizeWorkerRequest(
+    request,
+    workerSecret,
+    "push-receipts",
+    rawBody,
+  );
+  if (!workerAuthorization) {
     return jsonResponse(401, { error: "Yetkisiz worker çağrısı." });
   }
 
   const admin = createAdmin(supabaseUrl, serviceRoleKey);
+  const { data: nonceAccepted, error: nonceError } = await admin.rpc(
+    "consume_push_worker_nonce",
+    {
+      request_nonce: workerAuthorization.nonce,
+      request_scope: workerAuthorization.scope,
+      request_timestamp: workerAuthorization.timestamp,
+    },
+  );
+  if (nonceError) {
+    return jsonResponse(500, { error: "Worker yetkisi doğrulanamadı." });
+  }
+  if (nonceAccepted !== true) {
+    return jsonResponse(401, { error: "Worker isteği daha önce kullanılmış." });
+  }
   const { data, error } = await admin.rpc("claim_pending_push_receipts", {
     requested_batch_size: MAX_RECEIPTS_PER_REQUEST,
   });
@@ -96,29 +246,45 @@ export async function handlePushReceipts(
   const deliveries = (Array.isArray(data) ? data : []) as PendingDelivery[];
   if (deliveries.length === 0) return jsonResponse(200, { checked: 0 });
 
-  let response: Response;
+  const requestedIds = deliveries.map((item) => item.expo_ticket_id);
+  let receipts: Record<string, Receipt>;
   try {
-    response = await fetchImpl(EXPO_RECEIPTS_URL, {
-      method: "POST",
-      headers: {
-        accept: "application/json",
-        "content-type": "application/json",
-        ...(getEnv("EXPO_ACCESS_TOKEN")
-          ? { authorization: `Bearer ${getEnv("EXPO_ACCESS_TOKEN")}` }
-          : {}),
+    const payload = await fetchExpoJsonWithRetry(EXPO_RECEIPTS_URL, {
+      fetch: fetchImpl,
+      init: {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+          ...(getEnv("EXPO_ACCESS_TOKEN")
+            ? { authorization: `Bearer ${getEnv("EXPO_ACCESS_TOKEN")}` }
+            : {}),
+        },
+        body: JSON.stringify({ ids: requestedIds }),
       },
-      body: JSON.stringify({
-        ids: deliveries.map((item) => item.expo_ticket_id),
-      }),
-      signal: AbortSignal.timeout(10_000),
+      maxResponseBytes: MAX_EXPO_RESPONSE_BYTES,
+      sleep,
     });
-  } catch {
+    receipts = normalizeReceiptPayload(payload, requestedIds);
+  } catch (error) {
+    const transient = error instanceof ExpoHttpError &&
+      (error.status === null || isTransientExpoStatus(error.status));
+    if (!transient) {
+      const errorCode = error instanceof ExpoHttpError && error.status !== null
+        ? `EXPO_HTTP_${error.status}`
+        : "EXPO_PROTOCOL_ERROR";
+      const persisted = await persistPermanentReceiptFetchFailure(
+        admin,
+        deliveries,
+        errorCode,
+      );
+      if (!persisted) {
+        return jsonResponse(500, {
+          error: "Kalıcı Expo receipt hatası kaydedilemedi.",
+        });
+      }
+    }
     return jsonResponse(502, { error: "Expo receipt servisine ulaşılamadı." });
-  }
-
-  const payload = (await response.json()) as { data?: Record<string, Receipt> };
-  if (!response.ok || !payload.data) {
-    return jsonResponse(502, { error: "Expo receipt servisi yanıt vermedi." });
   }
 
   let checked = 0;
@@ -128,8 +294,11 @@ export async function handlePushReceipts(
   let invalidToken = 0;
 
   for (const delivery of deliveries) {
-    const receipt = payload.data[delivery.expo_ticket_id];
-    const nextAttemptCount = (delivery.receipt_attempt_count ?? 0) + 1;
+    const receipt = receipts[delivery.expo_ticket_id];
+    const nextAttemptCount = Math.min(
+      (delivery.receipt_attempt_count ?? 0) + 1,
+      MAX_RECEIPT_ATTEMPTS,
+    );
     const state = receipt ? classifyReceipt(receipt) : "retryable";
     const exhausted = state === "retryable" &&
       nextAttemptCount >= MAX_RECEIPT_ATTEMPTS;
@@ -138,20 +307,41 @@ export async function handlePushReceipts(
     const errorCode = receipt?.details?.error ??
       (receipt ? null : "RECEIPT_NOT_READY");
 
-    const { error: updateError } = await admin
-      .from("notification_deliveries")
-      .update({
-        receipt_status: finalState,
-        receipt_attempt_count: nextAttemptCount,
-        receipt_next_attempt_at: isFinal
-          ? null
-          : nextReceiptAttempt(nextAttemptCount),
-        receipt_checked_at: isFinal ? new Date().toISOString() : null,
-        receipt_error_code: errorCode,
-        error_message: receipt?.message?.slice(0, 500) ?? null,
-      })
-      .eq("id", delivery.id);
-    if (updateError) continue;
+    if (finalState === "invalid_token") {
+      const { data: persisted, error: persistError } = await admin.rpc(
+        "persist_invalid_push_receipt",
+        {
+          target_delivery_id: delivery.id,
+          expected_receipt_attempt_count: delivery.receipt_attempt_count ?? 0,
+          result_error_code: errorCode,
+          result_error_message: receipt?.message?.slice(0, 500) ?? null,
+        },
+      );
+      if (persistError || persisted !== true) {
+        return jsonResponse(500, {
+          error: "Geçersiz push token sonucu atomik olarak kaydedilemedi.",
+        });
+      }
+    } else {
+      const { error: updateError } = await admin
+        .from("notification_deliveries")
+        .update({
+          receipt_status: finalState,
+          receipt_attempt_count: nextAttemptCount,
+          receipt_next_attempt_at: isFinal
+            ? null
+            : nextReceiptAttempt(nextAttemptCount),
+          receipt_checked_at: isFinal ? new Date().toISOString() : null,
+          receipt_error_code: errorCode,
+          error_message: receipt?.message?.slice(0, 500) ?? null,
+        })
+        .eq("id", delivery.id);
+      if (updateError) {
+        return jsonResponse(500, {
+          error: "Teslimat sonucu kalıcılaştırılamadı.",
+        });
+      }
+    }
 
     checked += 1;
     if (finalState === "delivered") delivered += 1;
@@ -159,10 +349,6 @@ export async function handlePushReceipts(
     if (finalState === "permanent_failure") permanentFailure += 1;
     if (finalState === "invalid_token") {
       invalidToken += 1;
-      await admin
-        .from("push_tokens")
-        .update({ disabled_at: new Date().toISOString() })
-        .eq("id", delivery.push_token_id);
     }
   }
 

@@ -1,0 +1,143 @@
+name: Cloudflare edge preview
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: "Full 40-character commit SHA to deploy to preview"
+        required: true
+        type: string
+      mobile_ci_run_id:
+        description: "Successful same-SHA mobile-ci.yml run ID"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: cloudflare-preview-${{ inputs.target_sha }}
+  cancel-in-progress: false
+
+jobs:
+  deploy-preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: preview
+    defaults:
+      run:
+        working-directory: infra/cloudflare/etkinlink-edge
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.target_sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: infra/cloudflare/etkinlink-edge/package-lock.json
+      - name: Verify immutable checkout
+        id: immutable
+        shell: bash
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          echo "sha=$TARGET_SHA" >> "$GITHUB_OUTPUT"
+          echo "tag=sha-${TARGET_SHA:0:12}" >> "$GITHUB_OUTPUT"
+      - name: Enforce frozen product surface
+        working-directory: .
+        run: node scripts/guards/check-no-new-product-surface.mjs
+      - name: Require successful same-SHA full CI
+        shell: bash
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          QUALITY_RUN_ID: ${{ inputs.mobile_ci_run_id }}
+          TARGET_SHA: ${{ steps.immutable.outputs.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$QUALITY_RUN_ID" =~ ^[0-9]+$ ]]
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${QUALITY_RUN_ID}" > "$RUNNER_TEMP/mobile-ci-run.json"
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const run = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/mobile-ci-run.json`, 'utf8'));
+          if (run.conclusion !== 'success') throw new Error('Mobile CI did not succeed.');
+          if (run.head_sha !== process.env.TARGET_SHA) throw new Error('Mobile CI SHA mismatch.');
+          if (!String(run.path ?? '').endsWith('/mobile-ci.yml')) throw new Error('Run is not mobile-ci.yml.');
+          NODE
+      - run: npm ci
+      - name: Worker type, lint, format and unit gates
+        run: npm run check
+      - name: Wrangler preview dry-run
+        run: npm run dry-run:preview
+      - name: Validate environment-scoped preview origin bindings
+        shell: bash
+        env:
+          ORIGIN_BASE_URL: ${{ vars.ORIGIN_BASE_URL }}
+          JWT_ISSUER: ${{ vars.JWT_ISSUER }}
+          JWT_AUDIENCE: ${{ vars.JWT_AUDIENCE }}
+          JWKS_URL: ${{ vars.JWKS_URL }}
+          ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
+          PREVIEW_SUPABASE_PROJECT_REF: ${{ vars.PREVIEW_SUPABASE_PROJECT_REF }}
+          PRODUCTION_SUPABASE_PROJECT_REF: ${{ vars.PRODUCTION_SUPABASE_PROJECT_REF }}
+        run: node scripts/validate-deployment-environment.mjs --environment preview
+      - name: Deploy isolated preview Worker
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ORIGIN_BASE_URL: ${{ vars.ORIGIN_BASE_URL }}
+          JWT_ISSUER: ${{ vars.JWT_ISSUER }}
+          JWT_AUDIENCE: ${{ vars.JWT_AUDIENCE }}
+          JWKS_URL: ${{ vars.JWKS_URL }}
+          ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
+          TARGET_SHA: ${{ steps.immutable.outputs.sha }}
+          VERSION_TAG: ${{ steps.immutable.outputs.tag }}
+          QUALITY_RUN_ID: ${{ inputs.mobile_ci_run_id }}
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+          npx wrangler deploy --env preview --strict \
+            --var "ORIGIN_BASE_URL:${ORIGIN_BASE_URL}" \
+            --var "JWT_ISSUER:${JWT_ISSUER}" \
+            --var "JWT_AUDIENCE:${JWT_AUDIENCE}" \
+            --var "JWKS_URL:${JWKS_URL}" \
+            --var "ALLOWED_ORIGINS:${ALLOWED_ORIGINS}" \
+            --tag "$VERSION_TAG" --message "preview commit:${TARGET_SHA}"
+          mkdir -p ../../../artifacts/cloudflare-preview
+          npx wrangler deployments status --env preview --json \
+            > ../../../artifacts/cloudflare-preview/deployment-status.json
+          node --input-type=module <<'NODE'
+          import { createHash } from 'node:crypto';
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const hash = file => createHash('sha256').update(readFileSync(file)).digest('hex');
+          const metadata = {
+            schemaVersion: 1,
+            targetSha: process.env.TARGET_SHA,
+            environment: 'preview',
+            versionTag: process.env.VERSION_TAG,
+            qualityRunId: process.env.QUALITY_RUN_ID,
+            workflowRunId: process.env.GITHUB_RUN_ID,
+            repository: process.env.GITHUB_REPOSITORY,
+            sourceChecksums: {
+              packageLock: hash('package-lock.json'),
+              wranglerConfig: hash('wrangler.jsonc'),
+            },
+            createdAt: new Date().toISOString(),
+          };
+          writeFileSync('../../../artifacts/cloudflare-preview/metadata.json', `${JSON.stringify(metadata, null, 2)}\n`);
+          NODE
+          (cd ../../../artifacts/cloudflare-preview && sha256sum deployment-status.json metadata.json > SHA256SUMS)
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cloudflare-preview-${{ steps.immutable.outputs.sha }}
+          path: artifacts/cloudflare-preview
+          if-no-files-found: error
+          retention-days: 30

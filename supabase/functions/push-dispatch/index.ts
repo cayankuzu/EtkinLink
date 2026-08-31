@@ -2,7 +2,16 @@ import {
   createClient,
   type SupabaseClient,
 } from "npm:@supabase/supabase-js@2.112.1";
-import { isAuthorizedWorker } from "../_shared/workerAuth.ts";
+import {
+  BoundedJsonError,
+  readBoundedJsonRequest,
+} from "../_shared/boundedJson.ts";
+import {
+  ExpoHttpError,
+  fetchExpoJsonWithRetry,
+  isTransientExpoStatus,
+} from "../_shared/expoHttp.ts";
+import { authorizeWorkerRequest } from "../_shared/workerAuth.ts";
 
 type PushToken = {
   id: string;
@@ -42,6 +51,27 @@ type DeliveryResult = {
   skipped?: boolean;
 };
 
+class PersistenceError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PersistenceError";
+  }
+}
+
+class DeliveryProviderError extends Error {
+  constructor(readonly retryable: boolean) {
+    super(retryable ? "EXPO_TRANSIENT_FAILURE" : "EXPO_PERMANENT_FAILURE");
+    this.name = "DeliveryProviderError";
+  }
+}
+
+const RETRYABLE_EXPO_TICKET_ERRORS = new Set([
+  "ExpoServerError",
+  "InternalServerError",
+  "MessageRateExceeded",
+  "ServiceUnavailable",
+]);
+
 export type PushDispatchDependencies = {
   getEnv?: (name: string) => string | undefined;
   createAdmin?: (url: string, serviceRoleKey: string) => SupabaseClient;
@@ -55,6 +85,7 @@ const DEFAULT_BATCH_SIZE = 20;
 const MAX_BATCH_SIZE = 25;
 const MAX_CONCURRENT_EVENTS = 4;
 const MAX_REQUEST_BODY_BYTES = 32 * 1024;
+const MAX_EXPO_RESPONSE_BYTES = 512 * 1024;
 const ANDROID_CHANNELS: Record<string, string> = {
   messages: "messages-v2",
   rooms: "rooms-v2",
@@ -62,6 +93,12 @@ const ANDROID_CHANNELS: Record<string, string> = {
   events: "events-v2",
   system: "system-v2",
 };
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+type DispatchCommand =
+  | { kind: "event"; eventId: string }
+  | { kind: "drain"; batchSize: number };
 
 function notificationTtlSeconds(kind: string): number {
   if (kind === "direct_message" || kind === "room_message") return 86_400;
@@ -80,21 +117,37 @@ function jsonResponse(status: number, body: Record<string, unknown>): Response {
   });
 }
 
-function getEventId(payload: unknown): string | null {
-  if (!payload || typeof payload !== "object") return null;
-  const value = payload as {
-    eventId?: unknown;
-    record?: { id?: unknown };
-  };
-  const eventId = value.eventId ?? value.record?.id;
-  return typeof eventId === "string" ? eventId : null;
-}
-
-function getBatchSize(payload: unknown): number {
-  if (!payload || typeof payload !== "object") return DEFAULT_BATCH_SIZE;
-  const requested = Number((payload as { batchSize?: unknown }).batchSize);
-  if (!Number.isInteger(requested)) return DEFAULT_BATCH_SIZE;
-  return Math.min(Math.max(requested, 1), MAX_BATCH_SIZE);
+function parseDispatchCommand(payload: unknown): DispatchCommand | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+  const value = payload as Record<string, unknown>;
+  const keys = Object.keys(value);
+  if (
+    keys.length === 1 && keys[0] === "eventId" &&
+    typeof value.eventId === "string" && UUID_PATTERN.test(value.eventId)
+  ) {
+    return { kind: "event", eventId: value.eventId.toLowerCase() };
+  }
+  if (
+    (keys.length === 1 || keys.length === 2) &&
+    keys.includes("drain") &&
+    keys.every((key) => key === "drain" || key === "batchSize") &&
+    value.drain === true
+  ) {
+    if (keys.includes("batchSize")) {
+      if (
+        !Number.isInteger(value.batchSize) ||
+        (value.batchSize as number) < 1 ||
+        (value.batchSize as number) > MAX_BATCH_SIZE
+      ) {
+        return null;
+      }
+      return { kind: "drain", batchSize: value.batchSize as number };
+    }
+    return { kind: "drain", batchSize: DEFAULT_BATCH_SIZE };
+  }
+  return null;
 }
 
 function chunks<T>(items: T[], size: number): T[][] {
@@ -103,6 +156,67 @@ function chunks<T>(items: T[], size: number): T[][] {
     result.push(items.slice(index, index + size));
   }
   return result;
+}
+
+function optionalBoundedString(
+  value: unknown,
+  maxLength: number,
+): string | undefined {
+  return typeof value === "string" && value.length <= maxLength
+    ? value
+    : undefined;
+}
+
+function normalizeExpoTickets(
+  payload: unknown,
+  expectedCount: number,
+): ExpoTicket[] {
+  if (!payload || typeof payload !== "object" || !("data" in payload)) {
+    throw new Error("Expo ticket response is missing data.");
+  }
+  const rawData = (payload as { data?: unknown }).data;
+  const rawTickets = Array.isArray(rawData) ? rawData : [rawData];
+  if (rawTickets.length !== expectedCount) {
+    throw new Error("Expo ticket count does not match the message count.");
+  }
+
+  return rawTickets.map((rawTicket) => {
+    if (!rawTicket || typeof rawTicket !== "object") {
+      throw new Error("Expo ticket shape is invalid.");
+    }
+    const candidate = rawTicket as Record<string, unknown>;
+    if (candidate.status !== "ok" && candidate.status !== "error") {
+      throw new Error("Expo ticket status is invalid.");
+    }
+    const message = optionalBoundedString(candidate.message, 500);
+    if (candidate.message !== undefined && message === undefined) {
+      throw new Error("Expo ticket message is invalid.");
+    }
+    let errorCode: string | undefined;
+    if (candidate.details !== undefined) {
+      if (!candidate.details || typeof candidate.details !== "object") {
+        throw new Error("Expo ticket details are invalid.");
+      }
+      const rawError = (candidate.details as Record<string, unknown>).error;
+      errorCode = optionalBoundedString(rawError, 120);
+      if (rawError !== undefined && errorCode === undefined) {
+        throw new Error("Expo ticket error code is invalid.");
+      }
+    }
+    const id = optionalBoundedString(candidate.id, 256);
+    if (candidate.status === "ok" && (!id || id.trim().length === 0)) {
+      throw new Error("Successful Expo ticket is missing its id.");
+    }
+    if (candidate.status === "ok" && errorCode !== undefined) {
+      throw new Error("Successful Expo ticket includes an error code.");
+    }
+    return {
+      status: candidate.status,
+      ...(id ? { id } : {}),
+      ...(message !== undefined ? { message } : {}),
+      ...(errorCode !== undefined ? { details: { error: errorCode } } : {}),
+    };
+  });
 }
 
 async function mapWithConcurrency<T, R>(
@@ -166,33 +280,17 @@ async function sendExpoBatch(
   };
   if (accessToken) headers.authorization = `Bearer ${accessToken}`;
 
-  let lastError: Error | null = null;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      const response = await fetchImpl(EXPO_PUSH_URL, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(messages),
-        signal: AbortSignal.timeout(10_000),
-      });
-      const body = (await response.json()) as {
-        data?: ExpoTicket | ExpoTicket[];
-        errors?: Array<{ message?: string }>;
-      };
-      if (!response.ok || !body.data) {
-        const message = body.errors?.[0]?.message ??
-          `Expo HTTP ${response.status}`;
-        throw new Error(message);
-      }
-      return Array.isArray(body.data) ? body.data : [body.data];
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
-      if (attempt < 2) {
-        await sleep(300 * 2 ** attempt + Math.random() * 150);
-      }
-    }
-  }
-  throw lastError ?? new Error("Expo Push Service yanıt vermedi.");
+  const payload = await fetchExpoJsonWithRetry(EXPO_PUSH_URL, {
+    fetch: fetchImpl,
+    init: {
+      method: "POST",
+      headers,
+      body: JSON.stringify(messages),
+    },
+    maxResponseBytes: MAX_EXPO_RESPONSE_BYTES,
+    sleep,
+  });
+  return normalizeExpoTickets(payload, messages.length);
 }
 
 async function processClaimedNotification(
@@ -212,9 +310,10 @@ async function processClaimedNotification(
     };
   }
 
-  const deliveries: Array<Record<string, unknown>> = [];
   const invalidTokenIds: string[] = [];
   let successCount = 0;
+  let retryableTicketFailureCount = 0;
+  let permanentTicketFailureCount = 0;
 
   try {
     const { data: completedDeliveries, error: completedError } = await admin
@@ -223,7 +322,9 @@ async function processClaimedNotification(
       .eq("notification_event_id", claimed.event.id)
       .eq("status", "sent")
       .in("push_token_id", pendingTokens.map((token) => token.id));
-    if (completedError) throw completedError;
+    if (completedError) {
+      throw new PersistenceError("Completed deliveries could not be read.");
+    }
 
     const completedTokenIds = new Set(
       (completedDeliveries ?? []).map((delivery) => delivery.push_token_id),
@@ -239,7 +340,9 @@ async function processClaimedNotification(
           processing_started_at: null,
           last_error_code: null,
         }).eq("id", claimed.event.id);
-      if (eventError) throw eventError;
+      if (eventError) {
+        throw new PersistenceError("Completed event state could not be saved.");
+      }
       return {
         eventId: claimed.event.id,
         delivered: 0,
@@ -249,13 +352,22 @@ async function processClaimedNotification(
     }
 
     for (const tokenBatch of chunks(pendingTokens, MAX_MESSAGES_PER_REQUEST)) {
-      const tickets = await sendExpoBatch(
-        claimed.event,
-        tokenBatch,
-        accessToken,
-        fetchImpl,
-        sleep,
-      );
+      const deliveryBatch: Array<Record<string, unknown>> = [];
+      const invalidTokenBatchIds: string[] = [];
+      let tickets: ExpoTicket[];
+      try {
+        tickets = await sendExpoBatch(
+          claimed.event,
+          tokenBatch,
+          accessToken,
+          fetchImpl,
+          sleep,
+        );
+      } catch (error) {
+        const retryable = error instanceof ExpoHttpError &&
+          (error.status === null || isTransientExpoStatus(error.status));
+        throw new DeliveryProviderError(retryable);
+      }
       tokenBatch.forEach((token, index) => {
         const ticket = tickets[index];
         const succeeded = ticket?.status === "ok";
@@ -263,8 +375,18 @@ async function processClaimedNotification(
           ? null
           : ticket?.details?.error ?? "EXPO_PUSH_ERROR";
         if (succeeded) successCount += 1;
-        if (errorCode === "DeviceNotRegistered") invalidTokenIds.push(token.id);
-        deliveries.push({
+        if (errorCode === "DeviceNotRegistered") {
+          invalidTokenIds.push(token.id);
+          invalidTokenBatchIds.push(token.id);
+        } else if (
+          !succeeded && typeof errorCode === "string" &&
+          RETRYABLE_EXPO_TICKET_ERRORS.has(errorCode)
+        ) {
+          retryableTicketFailureCount += 1;
+        } else if (!succeeded) {
+          permanentTicketFailureCount += 1;
+        }
+        deliveryBatch.push({
           notification_event_id: claimed.event.id,
           push_token_id: token.id,
           status: succeeded ? "sent" : "failed",
@@ -280,27 +402,31 @@ async function processClaimedNotification(
           receipt_error_code: null,
         });
       });
+
+      const { error: deliveryError } = await admin
+        .from("notification_deliveries")
+        .upsert(deliveryBatch, {
+          onConflict: "notification_event_id,push_token_id",
+        });
+      if (deliveryError) {
+        throw new PersistenceError("Delivery tickets could not be saved.");
+      }
+
+      if (invalidTokenBatchIds.length > 0) {
+        const { error: tokenError } = await admin
+          .from("push_tokens")
+          .update({ disabled_at: new Date().toISOString() })
+          .in("id", invalidTokenBatchIds);
+        if (tokenError) {
+          throw new PersistenceError("Invalid tokens could not be disabled.");
+        }
+      }
     }
 
-    const { error: deliveryError } = await admin
-      .from("notification_deliveries")
-      .upsert(deliveries, {
-        onConflict: "notification_event_id,push_token_id",
-      });
-    if (deliveryError) throw deliveryError;
-
-    if (invalidTokenIds.length > 0) {
-      const { error: tokenError } = await admin
-        .from("push_tokens")
-        .update({ disabled_at: new Date().toISOString() })
-        .in("id", invalidTokenIds);
-      if (tokenError) throw tokenError;
-    }
-
-    const retryableFailureCount = pendingTokens.length - successCount -
-      invalidTokenIds.length;
+    const retryableFailureCount = retryableTicketFailureCount;
     const permanentFailure = successCount === 0 &&
-      invalidTokenIds.length === pendingTokens.length;
+      invalidTokenIds.length + permanentTicketFailureCount ===
+        pendingTokens.length;
     const nextStatus = retryableFailureCount > 0
       ? "failed"
       : successCount > 0
@@ -329,7 +455,9 @@ async function processClaimedNotification(
           : new Date().toISOString(),
       })
       .eq("id", claimed.event.id);
-    if (eventError) throw eventError;
+    if (eventError) {
+      throw new PersistenceError("Event delivery state could not be saved.");
+    }
 
     return {
       eventId: claimed.event.id,
@@ -337,19 +465,32 @@ async function processClaimedNotification(
       failed: pendingTokens.length - successCount,
     };
   } catch (error) {
+    const providerError = error instanceof DeliveryProviderError ? error : null;
+    const isPersistenceFailure = providerError === null;
     const message = error instanceof Error ? error.message : String(error);
-    await admin
+    const failureStatus = providerError && !providerError.retryable
+      ? "cancelled"
+      : "failed";
+    const { error: persistenceError } = await admin
       .from("notification_events")
       .update({
-        delivery_status: "failed",
+        delivery_status: failureStatus,
         processing_started_at: null,
         last_error_code: message.slice(0, 120),
-        next_attempt_at: new Date(
-          Date.now() +
-            60_000 * 2 ** Math.min(claimed.event.attempt_count, 6),
-        ).toISOString(),
+        next_attempt_at: failureStatus === "failed"
+          ? new Date(
+            Date.now() +
+              60_000 * 2 ** Math.min(claimed.event.attempt_count, 6),
+          ).toISOString()
+          : new Date().toISOString(),
       })
       .eq("id", claimed.event.id);
+    if (persistenceError) {
+      throw new PersistenceError(
+        "Notification failure state could not be persisted.",
+      );
+    }
+    if (isPersistenceFailure) throw error;
     return {
       eventId: claimed.event.id,
       delivered: 0,
@@ -382,41 +523,62 @@ export async function handlePushDispatch(
   if (!supabaseUrl || !serviceRoleKey || workerSecret.length < 32) {
     return jsonResponse(500, { error: "Sunucu yapılandırması eksik." });
   }
-  if (!isAuthorizedWorker(request, workerSecret)) {
-    return jsonResponse(401, { error: "Yetkisiz worker çağrısı." });
-  }
-  const contentLength = Number(request.headers.get("content-length") ?? "0");
-  if (
-    Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BODY_BYTES
-  ) {
-    return jsonResponse(413, { error: "İstek gövdesi çok büyük." });
-  }
-
+  let rawBody: string;
   let requestBody: unknown;
   try {
-    requestBody = await request.json();
-  } catch {
+    const parsed = await readBoundedJsonRequest(
+      request,
+      MAX_REQUEST_BODY_BYTES,
+    );
+    rawBody = parsed.rawBody;
+    requestBody = parsed.value;
+  } catch (error) {
+    if (error instanceof BoundedJsonError) {
+      return jsonResponse(error.status, { error: error.message });
+    }
     return jsonResponse(400, { error: "Geçersiz JSON gövdesi." });
   }
+  const command = parseDispatchCommand(requestBody);
+  if (!command) {
+    return jsonResponse(400, { error: "Geçersiz worker komutu." });
+  }
 
+  const workerAuthorization = await authorizeWorkerRequest(
+    request,
+    workerSecret,
+    "push-dispatch",
+    rawBody,
+  );
+  if (!workerAuthorization) {
+    return jsonResponse(401, { error: "Yetkisiz worker çağrısı." });
+  }
   const admin = createAdmin(supabaseUrl, serviceRoleKey);
-  const eventId = getEventId(requestBody);
-  const shouldDrain = requestBody !== null &&
-    typeof requestBody === "object" &&
-    (requestBody as { drain?: unknown }).drain === true;
-
+  const { data: nonceAccepted, error: nonceError } = await admin.rpc(
+    "consume_push_worker_nonce",
+    {
+      request_nonce: workerAuthorization.nonce,
+      request_scope: workerAuthorization.scope,
+      request_timestamp: workerAuthorization.timestamp,
+    },
+  );
+  if (nonceError) {
+    return jsonResponse(500, { error: "Worker yetkisi doğrulanamadı." });
+  }
+  if (nonceAccepted !== true) {
+    return jsonResponse(401, { error: "Worker isteği daha önce kullanılmış." });
+  }
   let claimedNotifications: ClaimedNotification[] = [];
-  if (eventId) {
+  if (command.kind === "event") {
     const { data, error } = await admin.rpc("claim_notification_event", {
-      target_event_id: eventId,
+      target_event_id: command.eventId,
     });
     if (error) {
       return jsonResponse(500, { error: "Bildirim olayı alınamadı." });
     }
     if (data) claimedNotifications = [data as ClaimedNotification];
-  } else if (shouldDrain) {
+  } else {
     const { data, error } = await admin.rpc("claim_notification_events", {
-      requested_batch_size: getBatchSize(requestBody),
+      requested_batch_size: command.batchSize,
     });
     if (error) {
       return jsonResponse(500, { error: "Bildirim kuyruğu alınamadı." });
@@ -424,30 +586,35 @@ export async function handlePushDispatch(
     claimedNotifications = Array.isArray(data)
       ? data as ClaimedNotification[]
       : [];
-  } else {
-    return jsonResponse(400, { error: "Bildirim olay kimliği eksik." });
   }
 
   if (claimedNotifications.length === 0) {
-    return jsonResponse(eventId ? 202 : 200, {
-      skipped: Boolean(eventId),
-      drained: shouldDrain,
+    return jsonResponse(command.kind === "event" ? 202 : 200, {
+      skipped: command.kind === "event",
+      drained: command.kind === "drain",
       claimed: 0,
     });
   }
 
-  const results = await mapWithConcurrency(
-    claimedNotifications,
-    MAX_CONCURRENT_EVENTS,
-    (claimed) =>
-      processClaimedNotification(
-        admin,
-        claimed,
-        getEnv("EXPO_ACCESS_TOKEN") ?? null,
-        fetchImpl,
-        sleep,
-      ),
-  );
+  let results: DeliveryResult[];
+  try {
+    results = await mapWithConcurrency(
+      claimedNotifications,
+      MAX_CONCURRENT_EVENTS,
+      (claimed) =>
+        processClaimedNotification(
+          admin,
+          claimed,
+          getEnv("EXPO_ACCESS_TOKEN") ?? null,
+          fetchImpl,
+          sleep,
+        ),
+    );
+  } catch {
+    return jsonResponse(500, {
+      error: "Bildirim teslimat durumu kalıcılaştırılamadı.",
+    });
+  }
   return jsonResponse(200, {
     claimed: results.length,
     delivered: results.reduce((sum, item) => sum + item.delivered, 0),

@@ -53,6 +53,7 @@ jest.mock('expo-haptics', () => ({
 }));
 jest.mock('expo-image', () => {
   const Image = Object.assign(() => null, {
+    clearMemoryCache: jest.fn(async () => true),
     prefetch: jest.fn(async () => true),
   });
   return { Image };
@@ -102,6 +103,7 @@ jest.mock('react-native-worklets', () =>
 jest.mock('react-native-config', () => ({
   SUPABASE_URL: 'https://example.supabase.co',
   SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_aaaaaaaa',
+  EDGE_API_BASE_URL: '',
   SENTRY_DSN: '',
   SENTRY_TRACES_SAMPLE_RATE: '0',
 }));

@@ -3,7 +3,9 @@
 <plist version="1.0">
   <dict>
     <key>EXUpdatesEnabled</key>
-    <false/>
+    <true/>
+    <key>EXUpdatesURL</key>
+    <string>https://u.expo.dev/a47f42fd-67ac-4f93-b6cd-8014abaa3e70</string>
     <key>EXUpdatesCheckOnLaunch</key>
     <string>ALWAYS</string>
     <key>EXUpdatesLaunchWaitMs</key>
@@ -11,6 +13,6 @@
     <key>EXUpdatesEnableBsdiffPatchSupport</key>
     <true/>
     <key>EXUpdatesRuntimeVersion</key>
-    <string>1.0.8</string>
+    <string>1.0.9</string>
   </dict>
 </plist>

@@ -17,7 +17,7 @@ Release pipeline'ı Android ve iOS build'lerinden sonra aynı release için sour
 - ilk fatal crash;
 - ilk ANR.
 
-Aynı workflow saatte iki kez son 24 saatin production crash-free session oranını denetler. Varsayılan alt sınır `%99,5`tir ve health verisi yoksa production kontrolü başarısız olur.
+Aynı workflow saatte iki kez son 24 saatin production crash-free session oranını denetler. Mevcut varsayılan `%99,5` değeri geçici release-health kapısıdır; ölçülmüş/başarılmış SLO değildir. Kalıcı eşik [observability-slo-runbook.md](observability-slo-runbook.md) prosedürüyle gerçek baseline'dan türetilir. Health verisi yoksa production kontrolü başarısız olur.
 
 ## Olay müdahalesi
 
@@ -27,6 +27,10 @@ Aynı workflow saatte iki kez son 24 saatin production crash-free session oranı
 4. Fatal/ANR artışında rollout'u durdur. Gerekirse mağaza rollout yüzdesini azalt veya son sağlıklı binary'ye dön.
 5. OTA geri alması yalnız aynı `runtimeVersion` içindeki JavaScript değişiklikleri için kullanılabilir; native uyumsuzluğu OTA ile kapatılmaz.
 6. Düzeltme sonrası alarmın toparlandığını ve crash-free eşiğinin yeniden geçtiğini kanıt paketine ekle.
+
+## Hesap silme continuation alarmı
+
+Backend izleme işi `public.list_terminal_account_deletion_continuations(100)` sonucunu service role ile periyodik kontrol eder. Bir veya daha fazla satır kritik privacy-operasyon olayıdır; kullanıcı UUID'si ve Storage yolu telemetriye yazılmaz. Cron/HTTP durumunu, hata kodunu ve Function sürümünü doğrula; terminal kaydı doğrudan Storage silerek kapatılmaz. Ayrıntılı retry, secret rotasyonu ve onaylı yeniden kuyruğa alma akışı [hesap silme operasyonları](account-deletion-operations.md) belgesindedir.
 
 ## PII canary
 

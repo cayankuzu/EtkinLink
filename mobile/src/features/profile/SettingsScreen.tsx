@@ -13,7 +13,6 @@ import { contentLimits } from '@shared/constants/limits';
 import { toAppError } from '@shared/lib/errors';
 import { enablePushNotifications } from '@shared/lib/pushNotifications';
 import { queryKeys } from '@shared/lib/queryKeys';
-import { supabase } from '@shared/lib/supabase';
 import { colors, layout, radius, spacing } from '@shared/theme';
 import type { Profile } from '@shared/types/domain';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -42,6 +41,10 @@ import {
   View,
 } from 'react-native';
 
+import {
+  accountDeletionErrorMessage,
+  deleteOwnAccount,
+} from './accountDeletionService';
 import { getProfile } from './profileService';
 
 type Props = NativeStackScreenProps<ProfileStackParamList, 'Settings'>;
@@ -128,36 +131,29 @@ export function SettingsScreen({ navigation }: Props) {
   }
 
   async function deleteAccount() {
-    if (confirmation !== 'SİL') return;
+    if (confirmation !== 'SİL' || !userId || busy) return;
     setBusy(true);
     setError(null);
-    const { error: deleteError } = await supabase.functions.invoke(
-      'delete-account',
-      { method: 'POST' },
-    );
-    if (deleteError) {
+    try {
+      await deleteOwnAccount(userId);
+      await signOut();
+    } catch (deleteError) {
+      setError(accountDeletionErrorMessage(deleteError));
+    } finally {
       setBusy(false);
-      let message = toAppError(deleteError).message;
-      const context =
-        typeof deleteError === 'object' &&
-        deleteError &&
-        'context' in deleteError &&
-        deleteError.context instanceof Response
-          ? deleteError.context
-          : null;
-      if (context) {
-        try {
-          const payload = (await context.clone().json()) as { error?: unknown };
-          if (typeof payload.error === 'string') message = payload.error;
-        } catch {
-          // Keep the normalized, user-safe fallback.
-        }
-      }
-      setError(message);
-      return;
     }
-    await signOut();
-    setBusy(false);
+  }
+
+  function openDeleteModal() {
+    setConfirmation('');
+    setError(null);
+    setDeleteOpen(true);
+  }
+
+  function closeDeleteModal() {
+    setDeleteOpen(false);
+    setConfirmation('');
+    setError(null);
   }
 
   return (
@@ -246,7 +242,7 @@ export function SettingsScreen({ navigation }: Props) {
           icon={Trash2}
           title="Hesabı Sil"
           danger
-          onPress={() => setDeleteOpen(true)}
+          onPress={openDeleteModal}
           last
         />
       </SettingsGroup>
@@ -255,7 +251,7 @@ export function SettingsScreen({ navigation }: Props) {
         visible={deleteOpen}
         transparent
         animationType="fade"
-        onRequestClose={() => setDeleteOpen(false)}
+        onRequestClose={closeDeleteModal}
       >
         <View style={styles.backdrop}>
           <View style={styles.modal} accessibilityViewIsModal>
@@ -286,11 +282,7 @@ export function SettingsScreen({ navigation }: Props) {
             <AppButton
               label="Vazgeç"
               variant="ghost"
-              onPress={() => {
-                setDeleteOpen(false);
-                setConfirmation('');
-                setError(null);
-              }}
+              onPress={closeDeleteModal}
             />
           </View>
         </View>

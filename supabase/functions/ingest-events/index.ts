@@ -1,6 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.112.1";
+import { EVENTS_API_URL, fetchBoundedJson } from "./upstreamHttp.ts";
 
-const API_URL = "https://etkinlik.io/api/v2/events";
 const PAGE_SIZE = 50;
 const MAX_EVENTS_PER_RUN = 200;
 
@@ -101,14 +101,22 @@ function entityName(value: unknown): string | null {
   return text(record(value)?.name) || null;
 }
 
-function mapEvent(value: unknown): EventRow | null {
+function mapEvent(value: unknown, runStartedAt: string): EventRow | null {
   const event = record(value);
   const externalId = numberValue(event?.id);
   const title = text(event?.name);
   const startAt = validDate(event?.start_r001 ?? event?.start);
   const sourceUrl = secureUrl(event?.url);
   const imageUrl = secureUrl(event?.poster_url);
-  if (externalId === null || !title || !startAt || !sourceUrl || !imageUrl) {
+  if (
+    externalId === null ||
+    !Number.isSafeInteger(externalId) ||
+    externalId <= 0 ||
+    !title ||
+    !startAt ||
+    !sourceUrl ||
+    !imageUrl
+  ) {
     return null;
   }
 
@@ -158,7 +166,10 @@ function mapEvent(value: unknown): EventRow | null {
       sync_source: "official-api-v2",
       api_event: event,
     },
-    ingested_at: new Date().toISOString(),
+    // The run start is a stable fallback version for upstream rows that omit
+    // modified_at. Capturing it before any page fetch makes overlapping runs
+    // orderable even when an older run reaches the database last.
+    ingested_at: runStartedAt,
   };
 }
 
@@ -174,27 +185,28 @@ async function fetchPage(skip: number): Promise<{
     skip: String(skip),
     take: String(PAGE_SIZE),
   });
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15_000);
-  try {
-    const response = await fetch(`${API_URL}?${params}`, {
-      signal: controller.signal,
+  const url = new URL(EVENTS_API_URL);
+  url.search = params.toString();
+  const payload = record(
+    await fetchBoundedJson(url, {
+      method: "GET",
       headers: {
         Accept: "application/json",
         "X-Etkinlik-Token": apiToken,
         "User-Agent": "EtkinLink-EventImporter/2.0",
       },
-    });
-    if (!response.ok) throw new Error(`UPSTREAM_${response.status}`);
-    const payload = record(await response.json());
-    const items = Array.isArray(payload?.items) ? payload.items : [];
-    return {
-      items,
-      total: numberValue(record(payload?.meta)?.total_count) ?? items.length,
-    };
-  } finally {
-    clearTimeout(timeout);
-  }
+    }),
+  );
+  const items = Array.isArray(payload?.items) ? payload.items : [];
+  if (items.length > PAGE_SIZE) throw new Error("UPSTREAM_PAGE_SIZE");
+  const reportedTotal = numberValue(record(payload?.meta)?.total_count);
+  return {
+    items,
+    total: reportedTotal !== null &&
+        Number.isSafeInteger(reportedTotal) && reportedTotal >= 0
+      ? reportedTotal
+      : items.length,
+  };
 }
 
 Deno.serve(async (request) => {
@@ -218,6 +230,7 @@ Deno.serve(async (request) => {
   }
 
   try {
+    const runStartedAt = new Date().toISOString();
     const rawItems: unknown[] = [];
     let total = MAX_EVENTS_PER_RUN;
     for (
@@ -230,9 +243,9 @@ Deno.serve(async (request) => {
       rawItems.push(...page.items);
       if (page.items.length < PAGE_SIZE) break;
     }
-    const rows = rawItems.map(mapEvent).filter((row): row is EventRow =>
-      Boolean(row)
-    );
+    const rows = rawItems
+      .map((item) => mapEvent(item, runStartedAt))
+      .filter((row): row is EventRow => Boolean(row));
     if (rows.length === 0) {
       return jsonResponse(502, { error: "API geçerli etkinlik döndürmedi." });
     }
@@ -241,18 +254,19 @@ Deno.serve(async (request) => {
       auth: { persistSession: false, autoRefreshToken: false },
       global: { headers: { "x-etkinlink-worker": "event-ingest-v2" } },
     });
-    let upserted = 0;
-    for (let index = 0; index < rows.length; index += 50) {
-      const chunk = rows.slice(index, index + 50);
-      const { error } = await supabase.from("events").upsert(chunk, {
-        onConflict: "source_guid",
-        ignoreDuplicates: false,
-      });
-      if (error) throw new Error(`DATABASE_${error.code}`);
-      upserted += chunk.length;
+    const uniqueRows = [...new Map(
+      rows.map((row) => [row.external_id, row] as const),
+    ).values()];
+    const { data, error } = await supabase.rpc("ingest_events_batch", {
+      event_rows: uniqueRows,
+    });
+    if (error) throw new Error(`DATABASE_${error.code}`);
+    const upserted = Number(data);
+    if (upserted !== uniqueRows.length) {
+      throw new Error("DATABASE_INVALID_RESULT");
     }
     return jsonResponse(200, {
-      source: API_URL,
+      source: EVENTS_API_URL,
       received: rawItems.length,
       valid: rows.length,
       upserted,

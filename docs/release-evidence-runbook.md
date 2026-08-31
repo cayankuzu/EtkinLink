@@ -1,8 +1,12 @@
 # Release evidence runbook
 
+> Bu operasyon rehberi [release-readiness.md](release-readiness.md) kararı ve `release-evidence.yml` aynı-SHA manifestiyle birlikte uygulanır. Bu belgedeki geçmiş tarih/koşu, güncel commit için PASS sayılmaz.
+
 Bu belge yalnızca repo dışı ortam/kimlik bilgisi gerektiren kapıları tanımlar. Mock, yerel statik kontrol, eski ekran görüntüsü veya debug imzası bu kanıtların yerine geçmez. Komutlarda secret değerlerini argüman olarak veya artifact içine yazmayın.
 
 Her koşu için commit SHA, UTC zamanı, ortam adı, workflow run URL'si ve artifact SHA-256 değeri kanıt kaydına eklenmelidir.
+
+`gh workflow run --ref` bir branch veya tag ister; ham commit SHA güvenilir bir dispatch ref'i değildir. Manuel workflow'lar için tam hedef SHA'ya çözümlenen korumalı release tag'ini kullanın ve koşunun `head_sha` alanını hedef SHA ile karşılaştırın. `mobile-ci.yml` manuel dispatch desteklemez; hedef commit'in korumalı `main` push koşusunu seçin.
 
 ## 1. Staging migration, lint ve pgTAP
 
@@ -14,8 +18,8 @@ Her koşu için commit SHA, UTC zamanı, ortam adı, workflow run URL'si ve arti
   npx supabase link --project-ref <staging-project-ref>
   npx supabase migration list --linked
   npx supabase db push --linked
-  gh workflow run mobile-ci.yml --ref <commit-sha>
-  gh run watch --exit-status
+  gh run list --workflow mobile-ci.yml --commit <full-commit-sha> --status completed
+  gh run watch <same-sha-run-id> --exit-status
   ```
 
 - Expected result: Migration history eşitlenir; `db lint --fail-on warning` temizdir; pgTAP `1..34` ve 34 adet `ok` üretir.
@@ -39,13 +43,13 @@ Her koşu için commit SHA, UTC zamanı, ortam adı, workflow run URL'si ve arti
   curl.exe -sS -o artifacts/staging-push-unauthorized.json -w "%{http_code}" `
     -X POST "$workerUrl/push-dispatch" -H "content-type: application/json" `
     --data '{"drain":true,"batchSize":1}'
-  curl.exe -sS -o artifacts/staging-push-drain.json -w "%{http_code}" `
-    -X POST "$workerUrl/push-dispatch" -H "content-type: application/json" `
-    -H "x-push-worker-secret: $env:PUSH_WORKER_SECRET" `
-    --data '{"drain":true,"batchSize":1}'
+  # Geçerli imza/timestamp/nonce yalnız staging DB helper'ı tarafından üretilir;
+  # secret komut satırına taşınmaz.
+  psql "$env:STAGING_DATABASE_URL" -v ON_ERROR_STOP=1 -c `
+    "select private.invoke_push_worker('push-dispatch', '{\"drain\":true,\"batchSize\":1}'::jsonb);"
   ```
 
-- Expected result: Eksik ve eski/revoke edilmiş secret `401`; aktif secret ile boş drain `200`; duplicate event claim `202/skipped`; gerçek olayda enqueue → claim → delivery → receipt durumları ilerler. Partial failure başarılı tokenı kaybetmez; `DeviceNotRegistered` tokenı `disabled_at` ile kapatır; geçici receipt en çok beş denemeden sonra final olur.
+- Expected result: Eksik/yanlış HMAC, stale timestamp, yanlış scope/body ve replay nonce `401`; DB helper'ının tek kullanımlık imzalı boş drain çağrısı `200`; duplicate event claim `202/skipped`; gerçek olayda enqueue → claim → delivery → receipt durumları ilerler. Partial failure başarılı tokenı kaybetmez; `DeviceNotRegistered` tokenı `disabled_at` ile kapatır; geçici receipt en çok beş denemeden sonra final olur. Service-role terminal query/replay idempotent ve auditli; anon/auth çağrıları reddedilir.
 - Artifact: `artifacts/staging-push-unauthorized.json`, `artifacts/staging-push-drain.json`, zaman damgalı ve test ID'sine filtrelenmiş `notification_events`/`notification_deliveries`/`push_tokens` CSV'leri, Expo receipt cevabının secretsiz özeti.
 - PASS: Yetki sınırı ve tüm durum geçişleri beklenen değerlerde; aynı dedupe key için tek event/delivery; invalid token kapalı.
 - FAIL: Worker anonim erişilebilir, event çift dispatch olur, pending lease takılı kalır, retry sınırsızdır veya invalid token aktif kalır.
@@ -56,7 +60,7 @@ Her koşu için commit SHA, UTC zamanı, ortam adı, workflow run URL'si ve arti
 - Command:
 
   ```powershell
-  gh workflow run mobile-e2e.yml --ref <commit-sha>
+  gh workflow run mobile-e2e.yml --ref <protected-tag-at-commit-sha>
   gh run watch --exit-status
   gh run download <run-id> -n android-maestro-evidence -D artifacts/e2e/android
   gh run download <run-id> -n staging-critical-backend-e2e-evidence -D artifacts/e2e/backend
@@ -73,7 +77,7 @@ Her koşu için commit SHA, UTC zamanı, ortam adı, workflow run URL'si ve arti
 - Command:
 
   ```powershell
-  gh workflow run staging-load-test.yml --ref <commit-sha> `
+  gh workflow run staging-load-test.yml --ref <protected-tag-at-commit-sha> `
     -f confirmation=staging-10k -f target_vus=10000
   gh run watch --exit-status
   gh run download <run-id> -n staging-mixed-load-evidence-10000vu `
@@ -111,11 +115,11 @@ Her koşu için commit SHA, UTC zamanı, ortam adı, workflow run URL'si ve arti
 
 ## 6. Signed Android AAB ve iOS IPA
 
-- Prerequisite: Önceki commit-SHA CI, son 7 gün E2E ve son 30 gün 10K artifact'ları; `production` environment signing/EAS/Sentry/Supabase secret'ları; onaylı release commit'i.
+- Prerequisite: Önceki commit-SHA CI, son 7 gün E2E ve son 30 gün 10K artifact'ları; `production` environment signing/EAS/Sentry/Supabase secret'ları; onaylı release commit'i; onaylı public identity var'ları olarak 64 büyük-hex `ANDROID_SIGNING_CERT_SHA256` ve 10 büyük-alfasayısal `IOS_SIGNING_TEAM_ID`.
 - Command:
 
   ```powershell
-  gh workflow run mobile-release.yml --ref <commit-sha>
+  gh workflow run mobile-release.yml --ref <protected-tag-at-commit-sha>
   gh run watch --exit-status
   gh run download <run-id> -n release-prerequisite-evidence -D artifacts/release/prerequisites
   gh run download <run-id> -n etkinlink-production-aab -D artifacts/release/android
@@ -124,9 +128,9 @@ Her koşu için commit SHA, UTC zamanı, ortam adı, workflow run URL'si ve arti
   Get-FileHash artifacts/release/ios/EtkinLink.ipa -Algorithm SHA256
   ```
 
-- Expected result: Release-evidence commit zinciri geçer; AAB strict `jarsigner`, R8 mapping ve release guard'ları geçer; IPA codesign geçer, `aps-environment=production`, privacy manifest mevcut; iki platform source map'leri Sentry'de bulunur.
-- Artifact: `release-prerequisite-evidence.json`, `app-release.aab`, `mapping.txt`, `EtkinLink.ipa`, `ios-entitlements.plist`, `PrivacyInfo.xcprivacy`, `eas-ios-build.json` ve kaydedilmiş SHA-256 dosyası.
-- PASS: İki release job'u başarılı, imza/entitlement/source-map kontrolleri temiz ve hash'ler mağazaya yüklenen binary ile aynı.
+- Expected result: Release-evidence commit zinciri geçer; AAB strict `jarsigner`, R8 mapping ve release guard'ları geçer; artifact signer certificate fingerprint onaylı Android değeriyle tam eşleşir. IPA codesign geçer; codesign ve entitlement Team ID değerleri onaylı Apple Team ID ile, application identifier da Team ID + bundle ID ile eşleşir; `aps-environment=production`, privacy manifest mevcut; iki platform source map'leri Sentry'de bulunur.
+- Artifact: `release-prerequisite-evidence.json`, `app-release.aab`, `mapping.txt`, `android-signer-identity.json`, `EtkinLink.ipa`, `ios-entitlements.plist`, `ios-signer-identity.json`, `PrivacyInfo.xcprivacy`, `eas-ios-build.json` ve kaydedilmiş SHA-256 dosyası.
+- PASS: İki release job'u başarılı, imza kimliği/entitlement/source-map kontrolleri temiz, identity JSON'ları hedef SHA'yı içeriyor ve hash'ler mağazaya yüklenen binary ile aynı.
 - FAIL: Debug/ad-hoc imza, eksik mapping/privacy/source map, SHA uyuşmazlığı veya yalnızca tek platform artifact'ı.
 
 ## 7. Sentry production evidence
@@ -135,7 +139,7 @@ Her koşu için commit SHA, UTC zamanı, ortam adı, workflow run URL'si ve arti
 - Command:
 
   ```powershell
-  gh workflow run configure-monitoring.yml --ref <commit-sha>
+  gh workflow run configure-monitoring.yml --ref <protected-tag-at-commit-sha>
   gh run watch --exit-status
   ```
 
@@ -153,6 +157,15 @@ Her koşu için commit SHA, UTC zamanı, ortam adı, workflow run URL'si ve arti
 - PASS: İki konsol beyanı onaylı ve envanterle fark yok; pre-launch blocker yok; hash eşleşiyor.
 - FAIL: Form eksik/draft, veri kategorisi farkı, account deletion yolu eksik, blocker raporu veya hash farkı.
 
+## 9. İncelenmiş manuel kanıt paketi
+
+- Prerequisite: Hedef commit'e doğrudan çözümlenen korumalı bir tag ve o tag için yayımlanmış, prerelease olmayan aynı-repo GitHub Release kaydı. Release onayı kanıtların kendisini incelemiş olmalıdır.
+- Bundle: Release'e `manual-release-evidence.zip` ekleyin. Tamamlanan her manuel kapı için kökte kapı ID'siyle aynı adlı dizin kullanın: `real_devices_and_push`, `ota_preview_rollback`, `cloudflare_preview_rollback`, `backup_restore`, `monitoring_slo`, `store_console`.
+- Attestation: Her kapı dizinindeki `attestation.json`; `schemaVersion: 1`, doğru `gateId`, tam küçük-harf hedef `targetSha`, `decision: "approved"`, boş olmayan `reviewer`, ISO-8601 `reviewedAt` ve boş olmayan göreli `evidenceFiles` dizisini içermelidir. Listedeki her dosya aynı kapı dizininde normal dosya olmalıdır; `..`, mutlak yol ve symlink kabul edilmez.
+- Command: `release-evidence.yml` workflow'unu aynı-SHA otomatik run ID'leri, `manual_evidence_release_tag` ve tam asset adıyla `main` ref'inden dispatch edin.
+- PASS: Workflow Release/tag/SHA bağını, her attestation'ı ve her listelenen dosyayı doğrular; manifest bütün dosyaları SHA-256 ile kaydeder ve tüm zorunlu kapılar `verified` ise `GO` üretir.
+- FAIL: Yanlış tag/SHA, draft/prerelease, eksik/boş ZIP, bozuk attestation, onay dışı karar, eksik dosya veya güvenli olmayan yol workflow'u durdurur. Eksik kapı sessizce PASS olmaz; `missing` kalır ve karar `NO-GO` olur.
+
 ## Nihai karar
 
-Yukarıdaki sekiz kapının her biri aynı release commit'iyle PASS olmadan karar **NO-GO**'dur. `mobile-release.yml` içindeki prerequisite kontrolü yalnızca CI/E2E/load kanıt zincirini otomatik doğrular; fiziksel cihaz, gerçek push, Sentry canary ve store-console kanıtları ayrı release onayında incelenmelidir.
+Yukarıdaki sekiz runtime kapısının her biri aynı release commit'iyle PASS olmadan karar **NO-GO**'dur. `mobile-release.yml` içindeki prerequisite kontrolü yalnızca CI/E2E/load kanıt zincirini otomatik doğrular; fiziksel cihaz, gerçek push, Sentry canary ve store-console kanıtları ayrı release onayında incelenip dokuzuncu bölümdeki değişmez pakete bağlanmalıdır.

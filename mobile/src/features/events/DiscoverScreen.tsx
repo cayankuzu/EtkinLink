@@ -96,13 +96,14 @@ export function DiscoverScreen({ navigation }: Props) {
   });
   const preview = useQuery({
     queryKey: queryKeys.events.previewFor(filterKey),
-    queryFn: () => searchEventPreview(filterKey),
+    queryFn: ({ signal }) => searchEventPreview(filterKey, signal),
     enabled: feedEnabled,
     staleTime: 5 * 60 * 1000,
   });
   const events = useInfiniteQuery({
     queryKey: queryKeys.events.feed(filterKey),
-    queryFn: ({ pageParam }) => searchEvents(filterKey, pageParam),
+    queryFn: ({ pageParam, signal }) =>
+      searchEvents(filterKey, pageParam, signal),
     initialPageParam: null as import('./eventTypes').EventCursor | null,
     getNextPageParam: page => page.nextCursor,
     enabled: feedEnabled,
@@ -141,6 +142,13 @@ export function DiscoverScreen({ navigation }: Props) {
       setEventSaved(event, saved),
     onMutate: async variables => {
       await queryClient.cancelQueries({ queryKey: queryKeys.events.all });
+      await queryClient.cancelQueries({ queryKey: queryKeys.events.preview });
+      const previousFeeds = queryClient.getQueriesData({
+        queryKey: queryKeys.events.all,
+      });
+      const previousPreviews = queryClient.getQueriesData({
+        queryKey: queryKeys.events.preview,
+      });
       queryClient.setQueriesData(
         { queryKey: queryKeys.events.all },
         (old: typeof events.data) =>
@@ -172,9 +180,17 @@ export function DiscoverScreen({ navigation }: Props) {
               }
             : old,
       );
+      return { previousFeeds, previousPreviews };
     },
-    onError: error =>
-      Alert.alert('Etkinlik kaydedilemedi', toAppError(error).message),
+    onError: (error, _variables, context) => {
+      for (const [queryKey, data] of context?.previousFeeds ?? []) {
+        queryClient.setQueryData(queryKey, data);
+      }
+      for (const [queryKey, data] of context?.previousPreviews ?? []) {
+        queryClient.setQueryData(queryKey, data);
+      }
+      Alert.alert('Etkinlik kaydedilemedi', toAppError(error).message);
+    },
     onSettled: () =>
       queryClient.invalidateQueries({
         queryKey: queryKeys.events.all,

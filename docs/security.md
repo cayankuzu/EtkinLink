@@ -16,7 +16,7 @@ Sohbette daha önce paylaşılmış secret'lar güvenli kabul edilmez; üretimde
 - Mesaj gönderme RPC'si aktif eşleşme, engel, silinme ve oda zaman penceresini sunucuda doğrular.
 - Mesaj gönderimleri kullanıcı başına tüm DM/oda toplamında dakikada 45; aynı konuşmada 10 saniyede 8 ile sınırlandırılır. Advisory transaction lock eşzamanlı isteklerin sayım yarışını önler; aynı `client_message_id` retry'ı yeni mesaj sayılmaz.
 - Profil doğum tarihi yalnızca hesap sahibine döner. Yaş ve cinsiyet görünürlüğü sunucu tarafında uygulanır.
-- Profil fotoğrafları private bucket'tadır ve bir saatlik imzalı URL ile sunulur.
+- Profil fotoğrafları private bucket'tadır ve beş dakikalık imzalı URL ile yalnız process belleğinde çözülür; kalıcı cache/snapshot'a signed URL yazılmaz.
 - Private Realtime topic'leri eşleşme üyeliği veya etkinlik katılımı ile yetkilendirilir.
 - Hesap silmede kişisel veriler silinir; moderasyon kayıtları yasal/güvenlik amacıyla anonimleştirilebilir.
 
@@ -35,10 +35,9 @@ Sohbette daha önce paylaşılmış secret'lar güvenli kabul edilmez; üretimde
 4. Release keystore ve CI secret'larını güvenli secret store'a koy.
 5. Brevo için kişisel Gmail yerine DKIM/DMARC doğrulanmış alan adı kullan.
 
-## Geçici dependency audit istisnası
+## Dependency audit politikası
 
-Metro'nun transitif `image-size` bağımlılığı için yayımlanmış
-`GHSA-w3rx-r6r6-pgpr` ve `GHSA-5p2g-fcmc-qvqq` kayıtlarında henüz yamalı sürüm
-yoktur. CI yalnızca bu iki advisory'den türeyen zinciri geçici olarak kabul eder;
-yeni bir high/critical bulgu kalite kapısını durdurur. Yamalı sürüm yayımlandığında
-`mobile/scripts/audit-production.cjs` allowlist'i kaldırılmalıdır.
+Metro zinciri `0.84.5` sürümüne sabitlenerek eski `image-size` advisory zinciri
+kaldırılmıştır. `mobile/scripts/audit-production.cjs` artık istisna/allowlist içermez;
+production bağımlılık ağındaki herhangi bir high veya critical bulgu CI kapısını
+durdurur.

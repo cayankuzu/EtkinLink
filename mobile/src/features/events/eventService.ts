@@ -1,4 +1,5 @@
 import { paginationLimits } from '@shared/constants/limits';
+import { isAbortError, isTransientError } from '@shared/lib/errors';
 import { applyAbortSignal } from '@shared/lib/network';
 import { getSignedProfilePhotoUrls } from '@shared/lib/profilePhotoUrls';
 import { supabase } from '@shared/lib/supabase';
@@ -45,6 +46,13 @@ function batches<T>(items: T[], size: number): T[][] {
     result.push(items.slice(index, index + size));
   }
   return result;
+}
+
+function canUsePublicRssFallback(
+  error: unknown,
+  signal?: AbortSignal,
+): boolean {
+  return !signal?.aborted && !isAbortError(error) && isTransientError(error);
 }
 
 function mapEvent(row: EventReadRow): Event {
@@ -267,21 +275,25 @@ export async function listSavedEvents(
 export async function searchEvents(
   filters: EventFilters,
   cursor: EventCursor | null = null,
+  signal?: AbortSignal,
 ): Promise<EventPage> {
   try {
-    return addSavedState(await searchApiEvents(filters, cursor));
-  } catch {
-    return addSavedState(await searchRssEvents(filters, cursor));
+    return addSavedState(await searchApiEvents(filters, cursor, 30, signal));
+  } catch (error) {
+    if (!canUsePublicRssFallback(error, signal)) throw error;
+    return addSavedState(await searchRssEvents(filters, cursor, signal));
   }
 }
 
 export async function searchEventPreview(
   filters: EventFilters,
+  signal?: AbortSignal,
 ): Promise<EventPage> {
   try {
-    return addSavedState(await searchApiEvents(filters, null, 12));
-  } catch {
-    return addSavedState(await searchRssEventsPreview(filters));
+    return addSavedState(await searchApiEvents(filters, null, 12, signal));
+  } catch (error) {
+    if (!canUsePublicRssFallback(error, signal)) throw error;
+    return addSavedState(await searchRssEventsPreview(filters, signal));
   }
 }
 
@@ -293,7 +305,8 @@ async function addSavedStateToEvents(events: Event[]): Promise<Event[]> {
 export async function loadUniversalEventSearchPreview(): Promise<Event[]> {
   try {
     return addSavedStateToEvents(await loadUniversalApiPreview());
-  } catch {
+  } catch (error) {
+    if (!canUsePublicRssFallback(error)) throw error;
     return addSavedStateToEvents(await loadUniversalRssPreview());
   }
 }
@@ -301,7 +314,8 @@ export async function loadUniversalEventSearchPreview(): Promise<Event[]> {
 export async function loadUniversalEventSearchBroadIndex(): Promise<Event[]> {
   try {
     return addSavedStateToEvents(await loadUniversalApiBroadIndex());
-  } catch {
+  } catch (error) {
+    if (!canUsePublicRssFallback(error)) throw error;
     return addSavedStateToEvents(await loadUniversalRssBroadIndex());
   }
 }
@@ -309,7 +323,8 @@ export async function loadUniversalEventSearchBroadIndex(): Promise<Event[]> {
 export async function loadUniversalEventSearchIndex(): Promise<Event[]> {
   try {
     return addSavedStateToEvents(await loadUniversalApiIndex());
-  } catch {
+  } catch (error) {
+    if (!canUsePublicRssFallback(error)) throw error;
     return addSavedStateToEvents(await loadUniversalRssIndex());
   }
 }
@@ -328,6 +343,7 @@ export function filterUniversalEventSearch(
 }
 
 export function clearEventFeedCache(): void {
+  syncRequests.clear();
   clearApiEventCache();
   clearRssFeedCache();
 }
@@ -335,7 +351,8 @@ export function clearEventFeedCache(): void {
 export async function listEventCategories(): Promise<string[]> {
   try {
     return await listApiEventCategories();
-  } catch {
+  } catch (error) {
+    if (!canUsePublicRssFallback(error)) throw error;
     return listRssCategories();
   }
 }
@@ -348,8 +365,9 @@ export async function getEvent(
     let source: Event;
     try {
       source = await getApiEvent(eventId, signal);
-    } catch {
-      source = await getRssEventPreview(eventId);
+    } catch (error) {
+      if (!canUsePublicRssFallback(error, signal)) throw error;
+      source = await getRssEventPreview(eventId, signal);
     }
     try {
       const databaseId = await resolveEventDatabaseId(source);
@@ -357,11 +375,13 @@ export async function getEvent(
         source,
         await getDatabaseEvent(databaseId, signal),
       );
-    } catch {
+    } catch (error) {
+      if (signal?.aborted || isAbortError(error)) throw error;
       try {
         return await getApiEvent(eventId, signal);
-      } catch {
-        return getRssEvent(eventId);
+      } catch (apiError) {
+        if (!canUsePublicRssFallback(apiError, signal)) throw apiError;
+        return getRssEvent(eventId, signal);
       }
     }
   }
@@ -371,11 +391,13 @@ export async function getEvent(
     let source: Event;
     try {
       source = await getApiEvent(`etkinlik-io-${database.externalId}`, signal);
-    } catch {
-      source = await getRssEvent(`etkinlik-io-${database.externalId}`);
+    } catch (error) {
+      if (!canUsePublicRssFallback(error, signal)) throw error;
+      source = await getRssEvent(`etkinlik-io-${database.externalId}`, signal);
     }
     return { ...mergeSourceEvent(source, database), id: database.id };
-  } catch {
+  } catch (error) {
+    if (signal?.aborted || isAbortError(error)) throw error;
     return database;
   }
 }

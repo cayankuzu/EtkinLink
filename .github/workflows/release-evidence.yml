@@ -1,0 +1,182 @@
+name: Immutable release evidence manifest
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: "Full 40-character release commit SHA"
+        required: true
+        type: string
+      mobile_ci_run_id:
+        description: "Optional same-SHA mobile-ci.yml run ID"
+        required: false
+        type: string
+      staging_e2e_run_id:
+        description: "Optional same-SHA mobile-e2e.yml run ID"
+        required: false
+        type: string
+      staging_load_run_id:
+        description: "Optional same-SHA staging-load-test.yml run ID"
+        required: false
+        type: string
+      mobile_release_run_id:
+        description: "Optional same-SHA mobile-release.yml run ID"
+        required: false
+        type: string
+      ota_production_run_id:
+        description: "Optional same-SHA eas-update-production.yml run ID"
+        required: false
+        type: string
+      cloudflare_production_run_id:
+        description: "Optional same-SHA cloudflare-production.yml run ID"
+        required: false
+        type: string
+      manual_evidence_release_tag:
+        description: "Optional protected same-SHA GitHub Release tag containing reviewed manual evidence"
+        required: false
+        type: string
+      manual_evidence_asset_name:
+        description: "Exact ZIP asset name on the manual-evidence release"
+        required: false
+        default: "manual-release-evidence.zip"
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: release-evidence-${{ inputs.target_sha }}
+  cancel-in-progress: false
+
+jobs:
+  manifest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: production
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.target_sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Verify immutable main history commit
+        shell: bash
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$TARGET_SHA" origin/main
+          test -z "$(git status --porcelain --untracked-files=all)"
+      - name: Download only successful same-SHA workflow evidence
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ inputs.target_sha }}
+          MOBILE_CI_RUN_ID: ${{ inputs.mobile_ci_run_id }}
+          STAGING_E2E_RUN_ID: ${{ inputs.staging_e2e_run_id }}
+          STAGING_LOAD_RUN_ID: ${{ inputs.staging_load_run_id }}
+          MOBILE_RELEASE_RUN_ID: ${{ inputs.mobile_release_run_id }}
+          OTA_PRODUCTION_RUN_ID: ${{ inputs.ota_production_run_id }}
+          CLOUDFLARE_PRODUCTION_RUN_ID: ${{ inputs.cloudflare_production_run_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/evidence-input/run-metadata
+          download_run() {
+            local key="$1"
+            local run_id="$2"
+            local expected_workflow="$3"
+            if [[ -z "$run_id" ]]; then return 0; fi
+            [[ "$run_id" =~ ^[0-9]+$ ]]
+            gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" > "artifacts/evidence-input/run-metadata/${key}.json"
+            KEY="$key" EXPECTED_WORKFLOW="$expected_workflow" TARGET_SHA="$TARGET_SHA" \
+              node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const run = JSON.parse(readFileSync(`artifacts/evidence-input/run-metadata/${process.env.KEY}.json`, 'utf8'));
+          if (run.conclusion !== 'success') throw new Error(`${process.env.KEY} run did not succeed.`);
+          if (run.head_sha !== process.env.TARGET_SHA) throw new Error(`${process.env.KEY} is not from target SHA.`);
+          if (!String(run.path ?? '').endsWith(`/${process.env.EXPECTED_WORKFLOW}`)) {
+            throw new Error(`${process.env.KEY} has an unexpected workflow path.`);
+          }
+          NODE
+            gh run download "$run_id" --dir "artifacts/evidence-input/${key}"
+          }
+          download_run mobile_ci "$MOBILE_CI_RUN_ID" mobile-ci.yml
+          download_run staging_e2e "$STAGING_E2E_RUN_ID" mobile-e2e.yml
+          download_run staging_load "$STAGING_LOAD_RUN_ID" staging-load-test.yml
+          download_run mobile_release "$MOBILE_RELEASE_RUN_ID" mobile-release.yml
+          download_run ota_production "$OTA_PRODUCTION_RUN_ID" eas-update-production.yml
+          download_run cloudflare_production "$CLOUDFLARE_PRODUCTION_RUN_ID" cloudflare-production.yml
+      - name: Download reviewed same-SHA manual evidence bundle
+        if: inputs.manual_evidence_release_tag != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ inputs.target_sha }}
+          MANUAL_EVIDENCE_RELEASE_TAG: ${{ inputs.manual_evidence_release_tag }}
+          MANUAL_EVIDENCE_ASSET_NAME: ${{ inputs.manual_evidence_asset_name }}
+        run: |
+          set -euo pipefail
+          [[ "$MANUAL_EVIDENCE_RELEASE_TAG" =~ ^[A-Za-z0-9._-]{1,128}$ ]]
+          [[ "$MANUAL_EVIDENCE_ASSET_NAME" =~ ^[A-Za-z0-9._-]{1,128}\.zip$ ]]
+          git fetch --no-tags origin \
+            "refs/tags/${MANUAL_EVIDENCE_RELEASE_TAG}:refs/tags/${MANUAL_EVIDENCE_RELEASE_TAG}"
+          test "$(git rev-list -n 1 "$MANUAL_EVIDENCE_RELEASE_TAG")" = "$TARGET_SHA"
+          mkdir -p artifacts/evidence-input/manual-bundle artifacts/evidence-input/manual
+          gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${MANUAL_EVIDENCE_RELEASE_TAG}" \
+            > artifacts/evidence-input/manual-bundle/release.json
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const release = JSON.parse(readFileSync('artifacts/evidence-input/manual-bundle/release.json', 'utf8'));
+          if (release.draft || release.prerelease) throw new Error('Manual evidence release must be published and non-prerelease.');
+          const asset = (release.assets ?? []).find(item => item.name === process.env.MANUAL_EVIDENCE_ASSET_NAME);
+          if (!asset || Number(asset.size) <= 0 || Number(asset.size) > 2_000_000_000) {
+            throw new Error('Manual evidence ZIP asset is missing, empty, or too large.');
+          }
+          NODE
+          gh release download "$MANUAL_EVIDENCE_RELEASE_TAG" \
+            --pattern "$MANUAL_EVIDENCE_ASSET_NAME" \
+            --dir artifacts/evidence-input/manual-bundle
+          BUNDLE="artifacts/evidence-input/manual-bundle/${MANUAL_EVIDENCE_ASSET_NAME}"
+          test -f "$BUNDLE"
+          while IFS= read -r entry; do
+            [[ "$entry" =~ ^[A-Za-z0-9._/-]+$ ]]
+            [[ "$entry" != /* ]]
+            [[ "/$entry/" != *"/../"* ]]
+          done < <(unzip -Z1 "$BUNDLE")
+          unzip -q "$BUNDLE" -d artifacts/evidence-input/manual
+          test -z "$(find artifacts/evidence-input/manual -type l -print -quit)"
+      - name: Build explicit evidence claims
+        shell: bash
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
+          MOBILE_CI_RUN_ID: ${{ inputs.mobile_ci_run_id }}
+          STAGING_E2E_RUN_ID: ${{ inputs.staging_e2e_run_id }}
+          STAGING_LOAD_RUN_ID: ${{ inputs.staging_load_run_id }}
+          MOBILE_RELEASE_RUN_ID: ${{ inputs.mobile_release_run_id }}
+          OTA_PRODUCTION_RUN_ID: ${{ inputs.ota_production_run_id }}
+          CLOUDFLARE_PRODUCTION_RUN_ID: ${{ inputs.cloudflare_production_run_id }}
+          MANUAL_EVIDENCE_RELEASE_TAG: ${{ inputs.manual_evidence_release_tag }}
+        run: |
+          set -euo pipefail
+          node scripts/release/apply-evidence-claims.mjs
+      - name: Generate hashes and honest GO/NO-GO manifest
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: >-
+          node scripts/release/generate-evidence-manifest.mjs
+          --expected-sha "$TARGET_SHA"
+          --claims artifacts/evidence-input/evidence-status.json
+          --artifact-dir artifacts/evidence-input
+          --output artifacts/release-evidence/manifest.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: immutable-release-evidence-${{ inputs.target_sha }}
+          path: artifacts/release-evidence
+          if-no-files-found: error
+          retention-days: 90

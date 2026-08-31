@@ -6,13 +6,44 @@ import { View } from 'react-native';
 
 const retryDelaysMs = [450, 1_200] as const;
 
-export function stableImageCacheKey(uri: string): string {
+type AppImageCacheConfiguration = {
+  cachePolicy: 'memory' | 'memory-disk';
+  cacheKey?: string;
+  recyclingKey: string;
+};
+
+function stableImageCacheKey(uri: string): string {
   try {
     const parsed = new URL(uri);
     return `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
   } catch {
     return uri.split(/[?#]/u)[0] ?? uri;
   }
+}
+
+function isSignedProfilePhotoUrl(uri: string): boolean {
+  try {
+    const pathname = decodeURIComponent(new URL(uri).pathname);
+    return /\/storage\/v1\/(?:object|render\/image)\/sign\/profile-photos(?:\/|$)/iu.test(
+      pathname,
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function appImageCacheConfiguration(
+  uri: string,
+): AppImageCacheConfiguration {
+  if (isSignedProfilePhotoUrl(uri)) {
+    return { cachePolicy: 'memory', recyclingKey: uri };
+  }
+  const cacheKey = stableImageCacheKey(uri);
+  return {
+    cachePolicy: 'memory-disk',
+    cacheKey,
+    recyclingKey: cacheKey,
+  };
 }
 
 type AppImageProps = Omit<
@@ -38,7 +69,10 @@ export function AppImage({
   const [retryAttempt, setRetryAttempt] = useState(0);
   const [waitingForNetwork, setWaitingForNetwork] = useState(false);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const cacheKey = useMemo(() => (uri ? stableImageCacheKey(uri) : ''), [uri]);
+  const cacheConfiguration = useMemo(
+    () => (uri ? appImageCacheConfiguration(uri) : null),
+    [uri],
+  );
 
   useEffect(() => {
     setRetryAttempt(0);
@@ -65,11 +99,15 @@ export function AppImage({
   return (
     <ExpoImage
       {...props}
-      source={{ uri, cacheKey }}
-      cachePolicy="memory-disk"
+      source={
+        cacheConfiguration?.cacheKey
+          ? { uri, cacheKey: cacheConfiguration.cacheKey }
+          : { uri }
+      }
+      cachePolicy={cacheConfiguration?.cachePolicy ?? 'memory'}
       contentFit={fit}
       priority={highPriority ? 'high' : 'normal'}
-      recyclingKey={recyclingKey ?? cacheKey}
+      recyclingKey={recyclingKey ?? cacheConfiguration?.recyclingKey}
       transition={transition}
       onError={event => {
         onError?.(event);
@@ -102,5 +140,14 @@ export async function prefetchAppImages(
   if (unique.length === 0) return;
   const network = await NetInfo.fetch();
   if (!network.isConnected || network.isInternetReachable === false) return;
-  await ExpoImage.prefetch(unique, { cachePolicy: 'memory-disk' });
+  const privateUris = unique.filter(isSignedProfilePhotoUrl);
+  const publicUris = unique.filter(uri => !isSignedProfilePhotoUrl(uri));
+  await Promise.all([
+    privateUris.length > 0
+      ? ExpoImage.prefetch(privateUris, { cachePolicy: 'memory' })
+      : Promise.resolve(false),
+    publicUris.length > 0
+      ? ExpoImage.prefetch(publicUris, { cachePolicy: 'memory-disk' })
+      : Promise.resolve(false),
+  ]);
 }

@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "gates": [
+    {
+      "id": "mobile_ci",
+      "required": true,
+      "status": "missing",
+      "sameCommitSha": null,
+      "evidencePaths": [],
+      "note": "Same-SHA mobile CI artifact has not been attached."
+    },
+    {
+      "id": "database_rls",
+      "required": true,
+      "status": "missing",
+      "sameCommitSha": null,
+      "evidencePaths": [],
+      "note": "Same-SHA local/staging DB lint and pgTAP evidence has not been attached."
+    },
+    {
+      "id": "staging_e2e",
+      "required": true,
+      "status": "missing",
+      "sameCommitSha": null,
+      "evidencePaths": [],
+      "note": "Same-SHA staging backend and mobile E2E evidence has not been attached."
+    },
+    {
+      "id": "staging_load",
+      "required": true,
+      "status": "missing",
+      "sameCommitSha": null,
+      "evidencePaths": [],
+      "note": "Same-SHA staged load evidence has not been attached."
+    },
+    {
+      "id": "signed_android_ios",
+      "required": true,
+      "status": "missing",
+      "sameCommitSha": null,
+      "evidencePaths": [],
+      "note": "Signed AAB, mapping, IPA, entitlements and symbols are absent."
+    },
+    {
+      "id": "real_devices_and_push",
+      "required": true,
+      "status": "missing",
+      "sameCommitSha": null,
+      "evidencePaths": [],
+      "note": "Physical device, accessibility and push matrix is absent."
+    },
+    {
+      "id": "ota_preview_rollback",
+      "required": true,
+      "status": "missing",
+      "sameCommitSha": null,
+      "evidencePaths": [],
+      "note": "OTA preview, signature rejection and rollback drill evidence is absent."
+    },
+    {
+      "id": "cloudflare_preview_rollback",
+      "required": true,
+      "status": "missing",
+      "sameCommitSha": null,
+      "evidencePaths": [],
+      "note": "Worker preview smoke, gradual rollout and rollback drill evidence is absent."
+    },
+    {
+      "id": "backup_restore",
+      "required": true,
+      "status": "missing",
+      "sameCommitSha": null,
+      "evidencePaths": [],
+      "note": "Isolated restore drill with measured RPO/RTO is absent."
+    },
+    {
+      "id": "monitoring_slo",
+      "required": true,
+      "status": "missing",
+      "sameCommitSha": null,
+      "evidencePaths": [],
+      "note": "Baseline-derived SLO and fired alert evidence is absent."
+    },
+    {
+      "id": "store_console",
+      "required": true,
+      "status": "missing",
+      "sameCommitSha": null,
+      "evidencePaths": [],
+      "note": "TestFlight/Internal Track and privacy/UGC form evidence is absent."
+    }
+  ]
+}

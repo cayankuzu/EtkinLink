@@ -9,15 +9,29 @@ jest.mock('@shared/lib/supabase', () => ({
 jest.mock('@shared/lib/profilePhotoUrls', () => ({
   getSignedProfilePhotoUrls: jest.fn(),
 }));
+jest.mock('@shared/lib/secureStorage', () => ({
+  secureStorage: {
+    getItem: jest.fn(),
+    removeItem: jest.fn(),
+    setItem: jest.fn(),
+  },
+}));
+jest.mock('@shared/lib/telemetry', () => ({
+  captureAppError: jest.fn(),
+}));
 
 import { getSignedProfilePhotoUrls } from '@shared/lib/profilePhotoUrls';
+import { secureStorage } from '@shared/lib/secureStorage';
 import { supabase } from '@shared/lib/supabase';
+import { captureAppError } from '@shared/lib/telemetry';
 
 import { createSupabaseBuilder } from '../../test/supabaseMock';
 import {
   getParticipationProfileStatus,
   getProfile,
   listProfileEvents,
+  purgeDeletedOwnerPhotoCleanup,
+  releaseProfilePhotoCleanupMemory,
   replaceProfilePhotos,
   reportProfilePhoto,
 } from './profileService';
@@ -27,6 +41,10 @@ const mockFrom = jest.mocked(supabase.from);
 const mockRpc = jest.mocked(supabase.rpc);
 const mockStorageFrom = jest.mocked(supabase.storage.from);
 const mockSignedUrls = jest.mocked(getSignedProfilePhotoUrls);
+const mockCleanupGetItem = jest.mocked(secureStorage.getItem);
+const mockCleanupRemoveItem = jest.mocked(secureStorage.removeItem);
+const mockCleanupSetItem = jest.mocked(secureStorage.setItem);
+const mockCaptureAppError = jest.mocked(captureAppError);
 
 function profileRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -82,11 +100,15 @@ function configureAssetTables({
 describe('profileService güvenlik ve rollback davranışları', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    releaseProfilePhotoCleanupMemory(null);
     mockGetUser.mockResolvedValue({
       data: { user: { id: 'user-1', email: 'user@example.test' } },
       error: null,
     } as never);
     mockSignedUrls.mockResolvedValue(new Map());
+    mockCleanupGetItem.mockResolvedValue(null);
+    mockCleanupRemoveItem.mockResolvedValue();
+    mockCleanupSetItem.mockResolvedValue();
   });
 
   it('katılım öncesi eksik kimlik, profil, fotoğraf ve ilgi adımlarını açıkça döndürür', async () => {
@@ -283,7 +305,11 @@ describe('profileService güvenlik ve rollback davranışları', () => {
       expect.objectContaining({ id: 'event-1', joined: true }),
     ]);
     await expect(
-      reportProfilePhoto('user-2', 'event-1'),
+      reportProfilePhoto(
+        'user-2',
+        'event-1',
+        'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      ),
     ).resolves.toBeUndefined();
     expect(mockRpc).toHaveBeenLastCalledWith(
       'submit_report',
@@ -291,6 +317,7 @@ describe('profileService güvenlik ve rollback davranışları', () => {
         target_user_id: 'user-2',
         target_event_id: 'event-1',
         block_after: false,
+        client_request_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
       }),
     );
   });
@@ -317,7 +344,7 @@ describe('profileService güvenlik ve rollback davranışları', () => {
     };
     mockStorageFrom.mockReturnValue(bucket as never);
     mockRpc.mockResolvedValue({
-      data: ['user-1/old.jpg'],
+      data: ['user-1/legacy/nested.jpg'],
       error: null,
     } as never);
 
@@ -325,13 +352,13 @@ describe('profileService güvenlik ve rollback davranışları', () => {
       { kind: 'existing', storagePath: 'user-1/keep.jpg' },
       {
         kind: 'new',
-        base64: 'AQID',
+        base64: '/9j/2Q==',
         mimeType: 'image/jpeg',
         extension: 'jpg',
       },
       {
         kind: 'new',
-        base64: 'AQID',
+        base64: 'iVBORw0KGgo=',
         mimeType: 'image/png',
         extension: 'png',
       },
@@ -342,7 +369,7 @@ describe('profileService güvenlik ve rollback davranışları', () => {
       'replace_profile_photos',
       expect.objectContaining({ storage_paths: expect.any(Array) }),
     );
-    expect(bucket.remove).toHaveBeenCalledWith(['user-1/old.jpg']);
+    expect(bucket.remove).toHaveBeenCalledWith(['user-1/legacy/nested.jpg']);
   });
 
   it('yükleme sonrası atomik replace başarısızsa yalnız yeni dosyaları temizler', async () => {
@@ -361,13 +388,13 @@ describe('profileService güvenlik ve rollback davranışları', () => {
         { kind: 'existing', storagePath: 'user-1/keep.jpg' },
         {
           kind: 'new',
-          base64: 'AQID',
+          base64: '/9j/2Q==',
           mimeType: 'image/jpeg',
           extension: 'jpg',
         },
         {
           kind: 'new',
-          base64: 'AQID',
+          base64: '/9j/2Q==',
           mimeType: 'image/jpeg',
           extension: 'jpg',
         },
@@ -376,5 +403,206 @@ describe('profileService güvenlik ve rollback davranışları', () => {
     const cleanup = bucket.remove.mock.calls.at(-1)?.[0] as string[];
     expect(cleanup).toHaveLength(2);
     expect(cleanup).not.toContain('user-1/keep.jpg');
+  });
+
+  it('commit sonrası nesne silme hatasını kalıcı kuyruğa alır ve başarılı replace sonucunu bozmaz', async () => {
+    const cleanupError = new Error('storage temporarily unavailable');
+    const bucket = {
+      upload: jest.fn().mockResolvedValue({ error: null }),
+      remove: jest.fn().mockResolvedValue({ error: cleanupError }),
+    };
+    mockStorageFrom.mockReturnValue(bucket as never);
+    mockRpc.mockResolvedValue({
+      data: ['user-1/legacy/nested.jpg'],
+      error: null,
+    } as never);
+
+    await expect(
+      replaceProfilePhotos([
+        { kind: 'existing', storagePath: 'user-1/one.jpg' },
+        { kind: 'existing', storagePath: 'user-1/two.jpg' },
+        { kind: 'existing', storagePath: 'user-1/three.jpg' },
+      ]),
+    ).resolves.toBeUndefined();
+
+    expect(bucket.remove).toHaveBeenCalledTimes(2);
+    expect(mockCleanupSetItem).toHaveBeenCalledWith(
+      'profile-photo-cleanup-v1.user-1',
+      JSON.stringify({
+        version: 1,
+        ownerId: 'user-1',
+        paths: ['user-1/legacy/nested.jpg'],
+      }),
+    );
+    expect(mockCleanupRemoveItem).not.toHaveBeenCalled();
+    expect(mockCleanupSetItem.mock.invocationCallOrder[0]).toBeLessThan(
+      bucket.remove.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER,
+    );
+  });
+
+  it('kalici temizlik kuyrugunu yeniden yukler ve yalniz guvenli owner yollarini siler', async () => {
+    const validPath = 'USER-1/legacy/nested.jpg';
+    mockCleanupGetItem.mockResolvedValue(
+      JSON.stringify({
+        version: 1,
+        ownerId: 'user-1',
+        paths: [
+          validPath,
+          'user-2/foreign.jpg',
+          'user-1',
+          'user-1/',
+          'user-1/../escape.jpg',
+          'user-1/./same.jpg',
+          'user-1\\unsafe.jpg',
+          'user-1/\u0001control.jpg',
+          `user-1/${'x'.repeat(1_025)}`,
+          42,
+        ],
+      }),
+    );
+    const bucket = {
+      remove: jest.fn().mockResolvedValue({ error: null }),
+    };
+    mockStorageFrom.mockReturnValue(bucket as never);
+    mockRpc.mockResolvedValue({ data: [profileRow()], error: null } as never);
+    configureAssetTables({});
+
+    await expect(getProfile()).resolves.toMatchObject({ id: 'user-1' });
+
+    expect(bucket.remove).toHaveBeenCalledWith([validPath]);
+    expect(mockCleanupRemoveItem).toHaveBeenCalledWith(
+      'profile-photo-cleanup-v1.user-1',
+    );
+  });
+
+  it('bozuk veya gecersiz kalici temizlik kaydini guvenle toparlar', async () => {
+    mockCleanupGetItem
+      .mockResolvedValueOnce('{broken-json')
+      .mockResolvedValueOnce(
+        JSON.stringify({ version: 2, ownerId: 'user-1', paths: [] }),
+      );
+    mockRpc.mockResolvedValue({ data: [profileRow()], error: null } as never);
+    configureAssetTables({});
+
+    await expect(getProfile()).resolves.toMatchObject({ id: 'user-1' });
+    await expect(getProfile()).resolves.toMatchObject({ id: 'user-1' });
+
+    expect(mockCaptureAppError).toHaveBeenCalledWith(expect.any(SyntaxError), {
+      operation: 'profile.photo_cleanup_read',
+    });
+    expect(mockCleanupRemoveItem).toHaveBeenCalledWith(
+      'profile-photo-cleanup-v1.user-1',
+    );
+  });
+
+  it('profil oturum ve RPC hatalarini baglamiyla iletir', async () => {
+    const authError = new Error('session expired');
+    mockGetUser.mockResolvedValueOnce({
+      data: { user: null },
+      error: authError,
+    } as never);
+    await expect(getProfile()).rejects.toBe(authError);
+
+    mockRpc.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'profile unavailable' },
+    } as never);
+    await expect(getProfile()).rejects.toThrow(
+      'Profil bilgileri: profile unavailable',
+    );
+  });
+
+  it('kuyruk persist ve acknowledgement hatalarinda commit sonucunu korur', async () => {
+    const bucket = {
+      remove: jest.fn().mockResolvedValue({ error: null }),
+    };
+    mockStorageFrom.mockReturnValue(bucket as never);
+    mockCleanupSetItem.mockRejectedValueOnce(new Error('persist unavailable'));
+    mockCleanupRemoveItem.mockRejectedValueOnce(new Error('ack unavailable'));
+    mockRpc.mockResolvedValue({
+      data: ['user-1/old.jpg'],
+      error: null,
+    } as never);
+
+    await expect(
+      replaceProfilePhotos([
+        { kind: 'existing', storagePath: 'user-1/one.jpg' },
+        { kind: 'existing', storagePath: 'user-1/two.jpg' },
+        { kind: 'existing', storagePath: 'user-1/three.jpg' },
+      ]),
+    ).resolves.toBeUndefined();
+
+    expect(bucket.remove).toHaveBeenCalledWith(['user-1/old.jpg']);
+    expect(mockCaptureAppError).toHaveBeenCalledWith(expect.any(Error), {
+      operation: 'profile.photo_cleanup_persist',
+    });
+    expect(mockCaptureAppError).toHaveBeenCalledWith(expect.any(Error), {
+      operation: 'profile.photo_cleanup_ack',
+    });
+  });
+
+  it('baska owner veya nested mevcut fotograf yolunu replace icin reddeder', async () => {
+    const validPhotos = [
+      { kind: 'existing' as const, storagePath: 'user-1/one.jpg' },
+      { kind: 'existing' as const, storagePath: 'user-1/two.jpg' },
+    ];
+
+    await expect(
+      replaceProfilePhotos([
+        { kind: 'existing', storagePath: 'user-2/foreign.jpg' },
+        ...validPhotos,
+      ]),
+    ).rejects.toThrow('Profil');
+    await expect(
+      replaceProfilePhotos([
+        { kind: 'existing', storagePath: 'user-1/legacy/nested.jpg' },
+        ...validPhotos,
+      ]),
+    ).rejects.toThrow('Profil');
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+
+  it('aktif cleanup kilidinde RAM state release eder ve silinen owner kaydini purge eder', async () => {
+    mockCleanupGetItem.mockResolvedValue(
+      JSON.stringify({
+        version: 1,
+        ownerId: 'user-1',
+        paths: ['user-1/stale.jpg'],
+      }),
+    );
+    let released = false;
+    const bucket = {
+      remove: jest.fn().mockImplementation(async () => {
+        if (!released) {
+          released = true;
+          releaseProfilePhotoCleanupMemory('user-1');
+          releaseProfilePhotoCleanupMemory(null);
+        }
+        return { error: null };
+      }),
+    };
+    mockStorageFrom.mockReturnValue(bucket as never);
+    mockRpc.mockResolvedValue({ data: [profileRow()], error: null } as never);
+    configureAssetTables({});
+
+    await expect(getProfile()).resolves.toMatchObject({ id: 'user-1' });
+    await Promise.resolve();
+    await purgeDeletedOwnerPhotoCleanup('user-1');
+
+    expect(released).toBe(true);
+    expect(mockCleanupRemoveItem).toHaveBeenCalledWith(
+      'profile-photo-cleanup-v1.user-1',
+    );
+  });
+
+  it('cleanup gozlemi beklenmedik bicimde firlatsa da kilit rejection yolunu sonlandirir', async () => {
+    const telemetryError = new Error('telemetry threw');
+    mockCleanupGetItem.mockRejectedValueOnce(new Error('secure read failed'));
+    mockCaptureAppError.mockImplementationOnce(() => {
+      throw telemetryError;
+    });
+
+    await expect(getProfile()).rejects.toBe(telemetryError);
+    await Promise.resolve();
   });
 });

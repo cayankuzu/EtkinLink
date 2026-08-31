@@ -41,7 +41,7 @@ const mockStorageFrom = supabase.storage.from as jest.Mock;
 const photos = [0, 1, 2].map(index => ({
   id: `photo-${index}`,
   uri: `file:///photo-${index}.jpg`,
-  base64: 'AQID',
+  base64: '/9j/2Q==',
   mimeType: 'image/jpeg',
   extension: 'jpg' as const,
 }));
@@ -74,6 +74,7 @@ function setupSuccessfulStorage() {
 describe('registrationService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockCreateClientId.mockReset();
     useRegistrationDraftStore.getState().reset();
     mockGetItem.mockResolvedValue(null);
     mockRemoveItem.mockResolvedValue();
@@ -158,6 +159,24 @@ describe('registrationService', () => {
     expect(mockRemoveItem).toHaveBeenCalledWith('registration.pending-profile');
   });
 
+  it('veritabanı commitinden sonraki taslak temizleme hatasında yüklenen fotoğrafları silmez', async () => {
+    setSubmittedDraft();
+    const { remove } = setupSuccessfulStorage();
+    mockRemoveItem.mockRejectedValueOnce(new Error('keychain unavailable'));
+
+    await expect(finalizePendingRegistration()).resolves.toBe(true);
+
+    expect(mockRpc).toHaveBeenCalledWith('replace_profile_photos', {
+      storage_paths: [
+        'user-1/client-1.jpg',
+        'user-1/client-2.jpg',
+        'user-1/client-3.jpg',
+      ],
+    });
+    expect(remove).not.toHaveBeenCalled();
+    expect(useRegistrationDraftStore.getState().submitted).toBe(false);
+  });
+
   it('aynı anda gelen finalizasyonları tek yükleme işleminde birleştirir', async () => {
     setSubmittedDraft();
     const { upload } = setupSuccessfulStorage();
@@ -213,5 +232,45 @@ describe('registrationService', () => {
 
     expect(mockStorageFrom).not.toHaveBeenCalled();
     expect(mockRemoveItem).not.toHaveBeenCalled();
+  });
+
+  it('kalici taslaktaki URI fotograflarini okuyup dogrular', async () => {
+    const persistedPhotos = photos.map(
+      ({ base64: _base64, ...photo }) => photo,
+    );
+    mockGetItem.mockResolvedValue(
+      JSON.stringify({ email: 'deniz@example.com', photos: persistedPhotos }),
+    );
+    const { upload } = setupSuccessfulStorage();
+    const arrayBuffer = jest
+      .fn()
+      .mockResolvedValue(Uint8Array.from([0xff, 0xd8, 0xff, 0xd9]).buffer);
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue({ arrayBuffer } as unknown as Response);
+
+    await expect(finalizePendingRegistration()).resolves.toBe(true);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    expect(arrayBuffer).toHaveBeenCalledTimes(3);
+    expect(upload).toHaveBeenCalledTimes(3);
+    fetchSpy.mockRestore();
+  });
+
+  it('rollback depolama temizligi de basarisizsa bilesik hata dondurur', async () => {
+    setSubmittedDraft();
+    const { upload, remove } = setupSuccessfulStorage();
+    const uploadError = new Error('second upload failed');
+    const cleanupError = new Error('cleanup failed');
+    upload
+      .mockResolvedValueOnce({ error: null })
+      .mockResolvedValueOnce({ error: uploadError });
+    remove.mockResolvedValueOnce({ error: cleanupError });
+
+    await expect(finalizePendingRegistration()).rejects.toMatchObject({
+      code: 'unavailable',
+      cause: { operationError: uploadError, cleanupError },
+    });
+    expect(remove).toHaveBeenCalledWith(['user-1/client-1.jpg']);
   });
 });

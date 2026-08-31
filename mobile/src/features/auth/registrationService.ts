@@ -1,6 +1,9 @@
+import { AppError } from '@shared/lib/errors';
 import { createClientId } from '@shared/lib/ids';
+import { assertValidProfilePhoto } from '@shared/lib/profilePhotoValidation';
 import { secureStorage } from '@shared/lib/secureStorage';
 import { supabase } from '@shared/lib/supabase';
+import { captureAppError } from '@shared/lib/telemetry';
 import type { Interest } from '@shared/types/domain';
 import { decode } from 'base64-arraybuffer';
 
@@ -99,12 +102,13 @@ async function finalizeDraft(pending: PendingRegistration): Promise<boolean> {
       const fileData = photo.base64
         ? decode(photo.base64)
         : await fetch(photo.uri).then(response => response.arrayBuffer());
+      assertValidProfilePhoto(fileData, photo.mimeType, photo.extension);
       const { error } = await supabase.storage
         .from('profile-photos')
         .upload(path, fileData, {
           contentType: photo.mimeType,
           upsert: false,
-          cacheControl: '31536000',
+          cacheControl: '0',
         });
       if (error) throw error;
       uploadedPaths.push(path);
@@ -115,14 +119,31 @@ async function finalizeDraft(pending: PendingRegistration): Promise<boolean> {
       { storage_paths: uploadedPaths },
     );
     if (photosError) throw photosError;
-
-    useRegistrationDraftStore.getState().reset();
-    await clearPendingRegistration();
-    return true;
-  } catch (error) {
+  } catch (operationError) {
     if (uploadedPaths.length > 0) {
-      await supabase.storage.from('profile-photos').remove(uploadedPaths);
+      const { error: cleanupError } = await supabase.storage
+        .from('profile-photos')
+        .remove(uploadedPaths);
+      if (cleanupError) {
+        throw new AppError(
+          'unavailable',
+          'Kayıt tamamlanamadı ve geçici fotoğraflar temizlenemedi.',
+          { operationError, cleanupError },
+        );
+      }
     }
-    throw error;
+    throw operationError;
   }
+
+  // The database now references uploadedPaths. Local draft cleanup must never
+  // enter the pre-commit rollback branch and delete those committed objects.
+  useRegistrationDraftStore.getState().reset();
+  try {
+    await clearPendingRegistration();
+  } catch (cleanupError) {
+    captureAppError(cleanupError, {
+      operation: 'registration.committed_draft_cleanup',
+    });
+  }
+  return true;
 }

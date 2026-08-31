@@ -80,6 +80,7 @@ export function RoomDetailScreen({ route, navigation }: Props) {
   const [now, setNow] = useState(() => new Date());
   const [frozenNotice, setFrozenNotice] = useState<string | null>(null);
   const frozenNoticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reportRequestId = useRef<string | null>(null);
   const event = useQuery({
     queryKey: queryKeys.events.detail(route.params.eventId),
     queryFn: ({ signal }) => getEvent(route.params.eventId, signal),
@@ -266,9 +267,11 @@ export function RoomDetailScreen({ route, navigation }: Props) {
           text: 'Bildir',
           style: 'destructive',
           onPress: () => {
+            reportRequestId.current ??= createClientId();
             setOptionBusy(true);
-            void submitRoomReport(route.params.eventId)
+            void submitRoomReport(route.params.eventId, reportRequestId.current)
               .then(() => {
+                reportRequestId.current = null;
                 setOptionsVisible(false);
                 Alert.alert(
                   'Rapor alındı',
@@ -336,16 +339,28 @@ export function RoomDetailScreen({ route, navigation }: Props) {
     setBody('');
     roomRealtime.stopTyping();
     setPending(current => [optimistic, ...current]);
-    await enqueueOutbox({
-      ownerId: userId,
-      kind: 'room',
-      contextId: route.params.eventId,
-      clientMessageId,
-      body: trimmed,
-      createdAt,
-      attempt: 0,
-      nextAttemptAt: createdAt,
-    });
+    try {
+      await enqueueOutbox({
+        ownerId: userId,
+        kind: 'room',
+        contextId: route.params.eventId,
+        clientMessageId,
+        body: trimmed,
+        createdAt,
+        attempt: 0,
+        nextAttemptAt: createdAt,
+      });
+    } catch (error) {
+      captureAppError(error, { operation: 'message.room_outbox_enqueue' });
+      setPending(current =>
+        current.map(item =>
+          item.clientMessageId === clientMessageId
+            ? { ...item, status: 'failed' }
+            : item,
+        ),
+      );
+      return;
+    }
     await deliver(optimistic);
   }
 

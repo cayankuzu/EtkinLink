@@ -46,6 +46,10 @@ jobs:
           java-version: 17
           cache: gradle
       - run: npm ci
+      - name: Require approved Android signer fingerprint input
+        env:
+          ANDROID_SIGNING_CERT_SHA256: ${{ vars.ANDROID_SIGNING_CERT_SHA256 }}
+        run: npm run release:signer:verify -- --platform=android --preflight
       - name: Production mobil yapılandırmasını hazırla
         shell: bash
         env:
@@ -104,9 +108,15 @@ jobs:
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          ANDROID_SIGNING_CERT_SHA256: ${{ vars.ANDROID_SIGNING_CERT_SHA256 }}
         run: |
           set -euo pipefail
+          TARGET_SHA="$(git rev-parse HEAD)"
           jarsigner -verify -strict android/app/build/outputs/bundle/release/app-release.aab
+          npm run release:signer:verify -- --platform=android \
+            --android-artifact=android/app/build/outputs/bundle/release/app-release.aab \
+            --target-sha="$TARGET_SHA" \
+            --output=artifacts/android-signer-identity.json
           npm run release:check -- --strict --platform=android \
             --android-artifact=android/app/build/outputs/bundle/release/app-release.aab \
             --android-mapping=android/app/build/outputs/mapping/release/mapping.txt
@@ -123,6 +133,7 @@ jobs:
           path: |
             mobile/android/app/build/outputs/bundle/release/app-release.aab
             mobile/android/app/build/outputs/mapping/release/mapping.txt
+            mobile/artifacts/android-signer-identity.json
           if-no-files-found: error
           retention-days: 30
 
@@ -141,6 +152,10 @@ jobs:
           cache: npm
           cache-dependency-path: mobile/package-lock.json
       - run: npm ci
+      - name: Require approved iOS signing Team ID input
+        env:
+          IOS_SIGNING_TEAM_ID: ${{ vars.IOS_SIGNING_TEAM_ID }}
+        run: npm run release:signer:verify -- --platform=ios --preflight
       - run: npm run release:check -- --strict --platform=ios
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
@@ -152,7 +167,7 @@ jobs:
           SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
       - name: EAS production build sonucunu bekle
         shell: bash
-        run: npx eas-cli build --platform ios --profile production --non-interactive --json > eas-ios-build.json
+        run: npx --yes eas-cli@21.0.0 build --platform ios --profile production --non-interactive --json > eas-ios-build.json
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
@@ -163,8 +178,11 @@ jobs:
           SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
       - name: Signed IPA'yı indir ve entitlement'ları doğrula
         shell: bash
+        env:
+          IOS_SIGNING_TEAM_ID: ${{ vars.IOS_SIGNING_TEAM_ID }}
         run: |
           set -euo pipefail
+          TARGET_SHA="$(git rev-parse HEAD)"
           mkdir -p artifacts/ios-payload
           BUILD_URL="$(node -e "const fs=require('fs');const value=JSON.parse(fs.readFileSync('eas-ios-build.json','utf8'));const build=Array.isArray(value)?value[0]:value;const url=build?.artifacts?.buildUrl;if(!url)process.exit(1);process.stdout.write(url)")"
           curl --fail --location --retry 3 "$BUILD_URL" --output artifacts/EtkinLink.ipa
@@ -174,6 +192,15 @@ jobs:
           codesign --verify --deep --strict "$APP_PATH"
           codesign -d --entitlements :- "$APP_PATH" > artifacts/ios-entitlements.plist 2>/dev/null
           test "$(plutil -extract aps-environment raw artifacts/ios-entitlements.plist)" = "production"
+          CODESIGN_TEAM_ID="$(codesign -dvv "$APP_PATH" 2>&1 | sed -n 's/^TeamIdentifier=//p' | head -n 1)"
+          ENTITLEMENT_TEAM_ID="$(plutil -extract com.apple.developer.team-identifier raw artifacts/ios-entitlements.plist)"
+          APPLICATION_IDENTIFIER="$(plutil -extract application-identifier raw artifacts/ios-entitlements.plist)"
+          npm run release:signer:verify -- --platform=ios \
+            --ios-codesign-team-id="$CODESIGN_TEAM_ID" \
+            --ios-entitlement-team-id="$ENTITLEMENT_TEAM_ID" \
+            --ios-application-identifier="$APPLICATION_IDENTIFIER" \
+            --target-sha="$TARGET_SHA" \
+            --output=artifacts/ios-signer-identity.json
           test -f "$APP_PATH/PrivacyInfo.xcprivacy"
           cp "$APP_PATH/PrivacyInfo.xcprivacy" artifacts/PrivacyInfo.xcprivacy
           npm run release:check -- \
@@ -193,6 +220,7 @@ jobs:
           path: |
             mobile/artifacts/EtkinLink.ipa
             mobile/artifacts/ios-entitlements.plist
+            mobile/artifacts/ios-signer-identity.json
             mobile/artifacts/PrivacyInfo.xcprivacy
             mobile/eas-ios-build.json
           if-no-files-found: error

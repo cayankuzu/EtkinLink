@@ -168,7 +168,9 @@ describe('eventService davranış regresyonları', () => {
 
   it('API ve kart-state hatalarında RSS sonucundaki son güvenli cache durumunu korur', async () => {
     const cached = event({ attendeeCount: 8, joined: true, saved: true });
-    jest.mocked(api.searchApiEvents).mockRejectedValue(new Error('API kapalı'));
+    jest
+      .mocked(api.searchApiEvents)
+      .mockRejectedValue(new Error('Network request failed'));
     jest.mocked(rss.searchRssEvents).mockResolvedValue({
       items: [event()],
       nextCursor: null,
@@ -189,8 +191,44 @@ describe('eventService davranış regresyonları', () => {
     );
   });
 
+  it('imzalı fotoğraf üretimi hata verirse son güvenli kart durumunu korur', async () => {
+    const cached = event({ attendeeCount: 9, joined: true });
+    jest.mocked(api.searchApiEvents).mockResolvedValue({
+      items: [event()],
+      nextCursor: null,
+    });
+    jest.mocked(api.getCachedApiEvent).mockReturnValue(cached);
+    mockRpc.mockReturnValue(
+      createSupabaseBuilder({
+        data: [
+          {
+            external_id: 1,
+            database_id: 'database-1',
+            attendee_count: 3,
+            attendee_photo_paths: ['user/photo.jpg'],
+            joined: false,
+            saved: false,
+          },
+        ],
+        error: null,
+      }) as never,
+    );
+    mockSignedUrls.mockRejectedValueOnce(new Error('signing unavailable'));
+
+    await expect(searchEvents({} as never)).resolves.toEqual(
+      expect.objectContaining({
+        items: [expect.objectContaining({ attendeeCount: 9, joined: true })],
+      }),
+    );
+    expect(rss.cacheRssEvents).toHaveBeenCalledWith([
+      expect.objectContaining({ attendeeCount: 9 }),
+    ]);
+  });
+
   it('preview ve evrensel indekslerde API başarısızsa RSS fallback kullanır', async () => {
-    jest.mocked(api.searchApiEvents).mockRejectedValue(new Error('kapalı'));
+    jest
+      .mocked(api.searchApiEvents)
+      .mockRejectedValue(new Error('Network request failed'));
     jest.mocked(rss.searchRssEventsPreview).mockResolvedValue({
       items: [],
       nextCursor: null,
@@ -218,12 +256,41 @@ describe('eventService davranış regresyonları', () => {
       ],
     ] as const;
     for (const [apiLoader, rssLoader, serviceLoader] of pairs) {
-      jest.mocked(apiLoader).mockRejectedValueOnce(new Error('kapalı'));
+      jest
+        .mocked(apiLoader)
+        .mockRejectedValueOnce(new Error('Network request failed'));
       jest
         .mocked(rssLoader)
         .mockResolvedValueOnce([event({ externalId: null })]);
       await expect(serviceLoader()).resolves.toHaveLength(1);
     }
+  });
+
+  it('validation ve cancellation hatalarını RSS fallback ile gizlemez', async () => {
+    jest
+      .mocked(api.searchApiEvents)
+      .mockRejectedValueOnce({ status: 400, message: 'invalid filter' });
+    await expect(searchEvents({} as never)).rejects.toMatchObject({
+      status: 400,
+    });
+
+    const abort = Object.assign(new Error('aborted'), { name: 'AbortError' });
+    jest.mocked(api.searchApiEvents).mockRejectedValueOnce(abort);
+    await expect(searchEvents({} as never)).rejects.toBe(abort);
+    expect(rss.searchRssEvents).not.toHaveBeenCalled();
+  });
+
+  it('iptal edilen detay isteğinde RSS detail fallback başlatmaz', async () => {
+    const controller = new AbortController();
+    const abort = Object.assign(new Error('aborted'), { name: 'AbortError' });
+    controller.abort();
+    jest.mocked(api.getApiEvent).mockRejectedValueOnce(abort);
+
+    await expect(getEvent('source-cancelled', controller.signal)).rejects.toBe(
+      abort,
+    );
+    expect(rss.getRssEventPreview).not.toHaveBeenCalled();
+    expect(rss.getRssEvent).not.toHaveBeenCalled();
   });
 
   it('filtre, kategori fallback ve cache temizliğini doğru servislere yönlendirir', async () => {
@@ -236,7 +303,7 @@ describe('eventService davranış regresyonları', () => {
 
     jest
       .mocked(api.listApiEventCategories)
-      .mockRejectedValue(new Error('kapalı'));
+      .mockRejectedValue(new Error('Network request failed'));
     jest.mocked(rss.listRssCategories).mockResolvedValue(['Müzik']);
     await expect(listEventCategories()).resolves.toEqual(['Müzik']);
     clearEventFeedCache();
@@ -288,6 +355,54 @@ describe('eventService davranış regresyonları', () => {
     expect(api.getApiEvent).toHaveBeenCalledTimes(2);
   });
 
+  it('sync hatasını ve eksik event_id yanıtını fail-closed ele alır', async () => {
+    const first = event({ id: 'source-sync-plain-error' });
+    const second = event({ id: 'source-sync-missing-id' });
+    jest
+      .mocked(api.getApiEvent)
+      .mockResolvedValueOnce(first)
+      .mockResolvedValueOnce(first)
+      .mockResolvedValueOnce(second)
+      .mockResolvedValueOnce(second);
+    mockInvoke
+      .mockResolvedValueOnce({
+        data: null,
+        error: { message: 'invoke failed' },
+      } as never)
+      .mockResolvedValueOnce({ data: {}, error: null } as never);
+
+    await expect(getEvent(first.id)).resolves.toBe(first);
+    await expect(getEvent(second.id)).resolves.toBe(second);
+  });
+
+  it('kaynak detay yollarında API kesintisini RSS ile, tüm kaynakların kesintisini DB ile karşılar', async () => {
+    const source = event({ id: 'source-rss-detail' });
+    jest
+      .mocked(api.getApiEvent)
+      .mockRejectedValueOnce(new Error('Network request failed'))
+      .mockRejectedValueOnce(new Error('Network request failed'));
+    jest.mocked(rss.getRssEventPreview).mockResolvedValueOnce(source);
+    jest.mocked(rss.getRssEvent).mockResolvedValueOnce(source);
+    mockInvoke.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'sync unavailable' },
+    } as never);
+    await expect(getEvent(source.id)).resolves.toBe(source);
+
+    mockRpc.mockReturnValueOnce(
+      createSupabaseBuilder({ data: [databaseRow()], error: null }) as never,
+    );
+    jest
+      .mocked(api.getApiEvent)
+      .mockRejectedValueOnce(new Error('Network request failed'));
+    jest
+      .mocked(rss.getRssEvent)
+      .mockRejectedValueOnce(new Error('Network request failed'));
+    await expect(getEvent('database-source-unavailable')).resolves.toEqual(
+      expect.objectContaining({ id: 'database-1', attendeeCount: 4 }),
+    );
+  });
+
   it('DB etkinliğinde kaynak bulunamazsa DB verisini, bulunursa kaynak ayrıntısını korur', async () => {
     mockRpc
       .mockReturnValueOnce(
@@ -303,7 +418,9 @@ describe('eventService davranış regresyonları', () => {
       expect.objectContaining({ id: 'database-1', externalId: null }),
     );
 
-    jest.mocked(api.getApiEvent).mockRejectedValue(new Error('API kapalı'));
+    jest
+      .mocked(api.getApiEvent)
+      .mockRejectedValue(new Error('Network request failed'));
     jest
       .mocked(rss.getRssEvent)
       .mockResolvedValue(event({ id: 'source-1', title: 'Kaynak başlığı' }));
@@ -372,10 +489,14 @@ describe('eventService davranış regresyonları', () => {
           data: null,
           error: { message: 'ayrılma reddedildi' },
         }) as never,
+      )
+      .mockReturnValueOnce(
+        createSupabaseBuilder({ data: null, error: null }) as never,
       );
     await expect(joinEvent('database-1')).resolves.toBe('database-1');
     await expect(leaveEvent('database-1')).rejects.toMatchObject({
       message: 'ayrılma reddedildi',
     });
+    await expect(leaveEvent('database-2')).resolves.toBe('database-2');
   });
 });

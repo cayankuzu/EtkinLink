@@ -13,6 +13,7 @@
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
 		AAC4471E709D46518E4DD835 /* Inter.ttf in Resources */ = {isa = PBXBuildFile; fileRef = C4FE5D671E0A4210ACFCC19E /* Inter.ttf */; };
 		EC858520FBAD4A978562DC1E /* Manrope.ttf in Resources */ = {isa = PBXBuildFile; fileRef = A845D837DBCC4A1FB5336C5E /* Manrope.ttf */; };
+		F4B60F852F4A4D17A5C1E001 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = F4B60F852F4A4D17A5C1E002 /* Expo.plist */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -26,6 +27,7 @@
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = EtkinLink/AppDelegate.swift; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = EtkinLink/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
+		F4B60F852F4A4D17A5C1E002 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Expo.plist; path = EtkinLink/Supporting/Expo.plist; sourceTree = "<group>"; };
 		C4FE5D671E0A4210ACFCC19E /* Inter.ttf */ = {isa = PBXFileReference; name = "Inter.ttf"; path = "../src/assets/fonts/Inter.ttf"; sourceTree = "<group>"; fileEncoding = undefined; lastKnownFileType = unknown; explicitFileType = undefined; includeInIndex = 0; };
 		A845D837DBCC4A1FB5336C5E /* Manrope.ttf */ = {isa = PBXFileReference; name = "Manrope.ttf"; path = "../src/assets/fonts/Manrope.ttf"; sourceTree = "<group>"; fileEncoding = undefined; lastKnownFileType = unknown; explicitFileType = undefined; includeInIndex = 0; };
 /* End PBXFileReference section */
@@ -50,6 +52,7 @@
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,
 				13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */,
+				F4B60F852F4A4D17A5C1E002 /* Expo.plist */,
 			);
 			name = EtkinLink;
 			sourceTree = "<group>";
@@ -176,6 +179,7 @@
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				AAC4471E709D46518E4DD835 /* Inter.ttf in Resources */,
 				EC858520FBAD4A978562DC1E /* Manrope.ttf in Resources */,
+				F4B60F852F4A4D17A5C1E001 /* Expo.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -275,7 +279,7 @@
 				APS_ENVIRONMENT = development;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 10;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = EtkinLink/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.4;
@@ -283,7 +287,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.8;
+				MARKETING_VERSION = 1.0.9;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -307,14 +311,14 @@
 				APS_ENVIRONMENT = production;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 10;
 				INFOPLIST_FILE = EtkinLink/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.4;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.8;
+				MARKETING_VERSION = 1.0.9;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",

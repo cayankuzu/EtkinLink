@@ -34,6 +34,7 @@ export const paginationLimits = {
 
 export const outboxLimits = {
   messages: 40,
+  maxAttempts: 5,
   maxAgeMs: 7 * 24 * 60 * 60_000,
   maxSerializedCharacters: 48_000,
 } as const;

@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 
-const SIGNED_URL_TTL_SECONDS = 60 * 60;
+const SIGNED_URL_TTL_SECONDS = 5 * 60;
 
 export async function getSignedProfilePhotoUrls(
   storagePaths: string[],

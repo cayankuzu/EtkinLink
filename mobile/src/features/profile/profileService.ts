@@ -1,7 +1,13 @@
 import { paginationLimits } from '@shared/constants/limits';
 import { createClientId } from '@shared/lib/ids';
 import { getSignedProfilePhotoUrls } from '@shared/lib/profilePhotoUrls';
+import {
+  assertValidProfilePhoto,
+  type ProfilePhotoExtension,
+} from '@shared/lib/profilePhotoValidation';
+import { secureStorage } from '@shared/lib/secureStorage';
 import { supabase } from '@shared/lib/supabase';
+import { captureAppError } from '@shared/lib/telemetry';
 import type {
   Event,
   Interest,
@@ -107,6 +113,7 @@ export async function getProfile(userId?: string): Promise<Profile> {
   const { data: authData, error: authError } = await supabase.auth.getUser();
   if (authError || !authData.user)
     throw authError ?? new Error('Oturum gerekli.');
+  await retryPendingProfilePhotoCleanup(authData.user.id);
   const profileId = userId ?? authData.user.id;
   const profileRequest =
     profileId === authData.user.id
@@ -236,6 +243,7 @@ export async function listProfileEvents(
 export async function reportProfilePhoto(
   userId: string,
   eventId?: string,
+  clientRequestId = createClientId(),
 ): Promise<void> {
   const { error } = await supabase.rpc('submit_report', {
     target_user_id: userId,
@@ -244,6 +252,7 @@ export async function reportProfilePhoto(
     target_event_id: eventId ?? null,
     client_context: { source: 'profile_photo' },
     block_after: false,
+    client_request_id: clientRequestId,
   });
   if (error) throw error;
 }
@@ -254,8 +263,194 @@ export type ReplacementPhoto =
       kind: 'new';
       base64: string;
       mimeType: string;
-      extension: 'jpg' | 'png' | 'webp' | 'heic' | 'heif';
+      extension: ProfilePhotoExtension;
     };
+
+const photoCleanupKeyPrefix = 'profile-photo-cleanup-v1';
+const inMemoryPhotoCleanup = new Map<string, Set<string>>();
+const photoCleanupLocks = new Map<string, Promise<void>>();
+
+type PersistedPhotoCleanup = {
+  version: 1;
+  ownerId: string;
+  paths: string[];
+};
+
+function hasUnsafeStoragePathCharacter(value: string): boolean {
+  for (const character of value) {
+    const codePoint = character.codePointAt(0) ?? 0;
+    if (character === '\\' || codePoint <= 0x1f || codePoint === 0x7f) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function photoCleanupKey(ownerId: string): string {
+  return `${photoCleanupKeyPrefix}.${ownerId}`;
+}
+
+function isOwnedProfilePhotoPath(
+  ownerId: string,
+  path: unknown,
+): path is string {
+  if (
+    typeof path !== 'string' ||
+    path.length > 1_024 ||
+    hasUnsafeStoragePathCharacter(path)
+  ) {
+    return false;
+  }
+  const segments = path.split('/');
+  return (
+    segments.length >= 2 &&
+    segments[0]?.toLowerCase() === ownerId.toLowerCase() &&
+    segments
+      .slice(1)
+      .every(segment => segment && segment !== '.' && segment !== '..')
+  );
+}
+
+function withPhotoCleanupLock(
+  ownerId: string,
+  operation: () => Promise<void>,
+): Promise<void> {
+  const previous = photoCleanupLocks.get(ownerId) ?? Promise.resolve();
+  const result = previous.then(operation, operation);
+  let tracked: Promise<void>;
+  tracked = result
+    .then(
+      () => undefined,
+      () => undefined,
+    )
+    .finally(() => {
+      if (photoCleanupLocks.get(ownerId) === tracked) {
+        photoCleanupLocks.delete(ownerId);
+      }
+    });
+  photoCleanupLocks.set(ownerId, tracked);
+  return result;
+}
+
+async function readPendingPhotoCleanup(ownerId: string): Promise<Set<string>> {
+  const pending = new Set(inMemoryPhotoCleanup.get(ownerId) ?? []);
+  try {
+    const raw = await secureStorage.getItem(photoCleanupKey(ownerId));
+    if (!raw) return pending;
+    const parsed = JSON.parse(raw) as Partial<PersistedPhotoCleanup>;
+    if (
+      parsed.version !== 1 ||
+      parsed.ownerId !== ownerId ||
+      !Array.isArray(parsed.paths)
+    ) {
+      await secureStorage.removeItem(photoCleanupKey(ownerId));
+      return pending;
+    }
+    for (const path of parsed.paths) {
+      if (isOwnedProfilePhotoPath(ownerId, path)) pending.add(path);
+    }
+  } catch (error) {
+    captureAppError(error, { operation: 'profile.photo_cleanup_read' });
+  }
+  return pending;
+}
+
+async function persistPendingPhotoCleanup(
+  ownerId: string,
+  paths: Set<string>,
+): Promise<void> {
+  inMemoryPhotoCleanup.set(ownerId, new Set(paths));
+  try {
+    await secureStorage.setItem(
+      photoCleanupKey(ownerId),
+      JSON.stringify({
+        version: 1,
+        ownerId,
+        paths: [...paths],
+      } satisfies PersistedPhotoCleanup),
+    );
+  } catch (error) {
+    captureAppError(error, { operation: 'profile.photo_cleanup_persist' });
+  }
+}
+
+async function removeProfilePhotoObjects(paths: string[]): Promise<void> {
+  if (paths.length === 0) return;
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const { error } = await supabase.storage
+      .from('profile-photos')
+      .remove(paths);
+    if (!error) return;
+    lastError = error;
+  }
+  throw lastError ?? new Error('Profil fotoğrafı temizlenemedi.');
+}
+
+async function retryPendingProfilePhotoCleanup(
+  ownerId: string,
+  additionalPaths: string[] = [],
+): Promise<void> {
+  await withPhotoCleanupLock(ownerId, async () => {
+    const pending = await readPendingPhotoCleanup(ownerId);
+    for (const path of additionalPaths) {
+      if (isOwnedProfilePhotoPath(ownerId, path)) pending.add(path);
+    }
+    if (pending.size === 0) return;
+
+    // Persist before deletion so a process stop between the Storage call and
+    // local acknowledgement can only cause a harmless idempotent retry.
+    await persistPendingPhotoCleanup(ownerId, pending);
+    try {
+      await removeProfilePhotoObjects([...pending]);
+    } catch (error) {
+      captureAppError(error, { operation: 'profile.photo_cleanup_retry' });
+      return;
+    }
+
+    inMemoryPhotoCleanup.delete(ownerId);
+    try {
+      await secureStorage.removeItem(photoCleanupKey(ownerId));
+    } catch (error) {
+      // The Storage objects are already gone. A stale durable record is safe:
+      // the next profile load repeats the idempotent deletion.
+      captureAppError(error, { operation: 'profile.photo_cleanup_ack' });
+    }
+  });
+}
+
+/**
+ * Drops only process-memory tombstones during logout/account switch. The
+ * encrypted durable record intentionally remains until Storage confirms the
+ * objects are gone, otherwise logout could turn a transient failure into a
+ * permanent orphan.
+ */
+export function releaseProfilePhotoCleanupMemory(ownerId: string | null): void {
+  const ownerIds = ownerId
+    ? [ownerId]
+    : [
+        ...new Set([
+          ...inMemoryPhotoCleanup.keys(),
+          ...photoCleanupLocks.keys(),
+        ]),
+      ];
+  for (const targetOwnerId of ownerIds) {
+    inMemoryPhotoCleanup.delete(targetOwnerId);
+    const active = photoCleanupLocks.get(targetOwnerId);
+    if (active) {
+      void active.then(() => inMemoryPhotoCleanup.delete(targetOwnerId));
+    }
+  }
+}
+
+/** The server has confirmed full account deletion, so no object tombstone remains useful. */
+export async function purgeDeletedOwnerPhotoCleanup(
+  ownerId: string,
+): Promise<void> {
+  await photoCleanupLocks.get(ownerId);
+  inMemoryPhotoCleanup.delete(ownerId);
+  await secureStorage.removeItem(photoCleanupKey(ownerId));
+}
 
 export async function replaceProfilePhotos(
   photos: ReplacementPhoto[],
@@ -265,19 +460,29 @@ export async function replaceProfilePhotos(
   }
   const { data: auth, error: authError } = await supabase.auth.getUser();
   if (authError || !auth.user) throw authError ?? new Error('Oturum gerekli.');
+  await retryPendingProfilePhotoCleanup(auth.user.id);
   const paths: string[] = [];
+  let replacementCommitted = false;
   try {
     for (const photo of photos) {
       if (photo.kind === 'existing') {
+        if (
+          !photo.storagePath.startsWith(`${auth.user.id}/`) ||
+          photo.storagePath.split('/').length !== 2
+        ) {
+          throw new Error('Profil fotoğrafı yolu bu kullanıcıya ait değil.');
+        }
         paths.push(photo.storagePath);
         continue;
       }
+      const fileData = decode(photo.base64);
+      assertValidProfilePhoto(fileData, photo.mimeType, photo.extension);
       const path = `${auth.user.id}/${createClientId()}.${photo.extension}`;
       const { error } = await supabase.storage
         .from('profile-photos')
-        .upload(path, decode(photo.base64), {
+        .upload(path, fileData, {
           contentType: photo.mimeType,
-          cacheControl: '31536000',
+          cacheControl: '0',
           upsert: false,
         });
       if (error) throw error;
@@ -288,19 +493,19 @@ export async function replaceProfilePhotos(
       { storage_paths: paths },
     );
     if (replaceError) throw replaceError;
+    replacementCommitted = true;
     const removedPaths = previousPaths.filter(path => !paths.includes(path));
-    if (removedPaths.length) {
-      await supabase.storage.from('profile-photos').remove(removedPaths);
-    }
-  } catch (error) {
+    await retryPendingProfilePhotoCleanup(auth.user.id, removedPaths);
+  } catch (operationError) {
     const newPaths = paths.filter(
       path =>
         !photos.some(
           photo => photo.kind === 'existing' && photo.storagePath === path,
         ),
     );
-    if (newPaths.length)
-      await supabase.storage.from('profile-photos').remove(newPaths);
-    throw error;
+    if (!replacementCommitted && newPaths.length) {
+      await retryPendingProfilePhotoCleanup(auth.user.id, newPaths);
+    }
+    throw operationError;
   }
 }

@@ -34,7 +34,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import { ArrowLeft, MoreVertical } from 'lucide-react-native';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -89,6 +89,7 @@ export function DirectChatScreen({ route, navigation }: Props) {
   const [reportReason, setReportReason] = useState<ReportReason>('spam');
   const [reportDetails, setReportDetails] = useState('');
   const [reportBusy, setReportBusy] = useState(false);
+  const reportRequestId = useRef<string | null>(null);
   const match = useQuery({
     queryKey: queryKeys.messages.match(route.params.matchId),
     queryFn: ({ signal }) => getMatch(route.params.matchId, signal),
@@ -218,16 +219,28 @@ export function DirectChatScreen({ route, navigation }: Props) {
     setBody('');
     presence.setTyping(false);
     setPending(current => [optimistic, ...current]);
-    await enqueueOutbox({
-      ownerId: userId,
-      kind: 'direct',
-      contextId: route.params.matchId,
-      clientMessageId,
-      body: trimmed,
-      createdAt,
-      attempt: 0,
-      nextAttemptAt: createdAt,
-    });
+    try {
+      await enqueueOutbox({
+        ownerId: userId,
+        kind: 'direct',
+        contextId: route.params.matchId,
+        clientMessageId,
+        body: trimmed,
+        createdAt,
+        attempt: 0,
+        nextAttemptAt: createdAt,
+      });
+    } catch (error) {
+      captureAppError(error, { operation: 'message.direct_outbox_enqueue' });
+      setPending(current =>
+        current.map(item =>
+          item.clientMessageId === clientMessageId
+            ? { ...item, status: 'failed' }
+            : item,
+        ),
+      );
+      return;
+    }
     await deliver(optimistic);
   }
   function openFailed(message: DirectMessage) {
@@ -389,22 +402,31 @@ export function DirectChatScreen({ route, navigation }: Props) {
     );
   }
   async function submitReport(blockAfter: boolean) {
-    if (!match.data || reportDetails.trim().length < 20) return;
+    if (!match.data || reportBusy || reportDetails.trim().length < 20) return;
+    reportRequestId.current ??= createClientId();
     setReportBusy(true);
-    const { error } = await supabase.rpc('submit_report', {
-      target_user_id: match.data.otherUser.id,
-      reason: reportReason,
-      details: reportDetails.trim(),
-      target_event_id: match.data.eventId,
-      target_match_id: match.data.id,
-      client_context: { platform: Platform.OS },
-      block_after: blockAfter,
-    });
+    let reportError: unknown = null;
+    try {
+      const { error } = await supabase.rpc('submit_report', {
+        target_user_id: match.data.otherUser.id,
+        reason: reportReason,
+        details: reportDetails.trim(),
+        target_event_id: match.data.eventId,
+        target_match_id: match.data.id,
+        client_context: { platform: Platform.OS },
+        block_after: blockAfter,
+        client_request_id: reportRequestId.current,
+      });
+      reportError = error;
+    } catch (error) {
+      reportError = error;
+    }
     setReportBusy(false);
-    if (error) {
-      Alert.alert('Rapor gönderilemedi', error.message);
+    if (reportError) {
+      Alert.alert('Rapor gönderilemedi', toAppError(reportError).message);
       return;
     }
+    reportRequestId.current = null;
     setReportVisible(false);
     setReportDetails('');
     setMenuVisible(false);
@@ -605,7 +627,10 @@ export function DirectChatScreen({ route, navigation }: Props) {
             <AppButton
               label="Şikâyet et"
               variant="secondary"
-              onPress={() => setReportVisible(true)}
+              onPress={() => {
+                reportRequestId.current ??= createClientId();
+                setReportVisible(true);
+              }}
             />
             <AppButton
               label={

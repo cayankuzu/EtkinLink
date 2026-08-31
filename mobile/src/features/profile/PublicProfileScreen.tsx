@@ -6,11 +6,12 @@ import {
   Skeleton,
 } from '@shared/components';
 import { toAppError } from '@shared/lib/errors';
+import { createClientId } from '@shared/lib/ids';
 import { queryKeys } from '@shared/lib/queryKeys';
 import { spacing } from '@shared/theme';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react-native';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 
 import { getMatchContext } from '../matching/matchingService';
@@ -31,6 +32,7 @@ type Props = {
 
 export function PublicProfileScreen({ route, navigation }: Props) {
   const [selected, setSelected] = useState<'upcoming' | 'attended'>('upcoming');
+  const reportRequestId = useRef<string | null>(null);
   const profile = useQuery({
     queryKey: queryKeys.profile.byId(route.params.userId),
     queryFn: () => getProfile(route.params.userId),
@@ -62,12 +64,18 @@ export function PublicProfileScreen({ route, navigation }: Props) {
     matchContext.isRefetching;
 
   async function reportPhoto(): Promise<void> {
+    reportRequestId.current ??= createClientId();
     try {
-      await reportProfilePhoto(route.params.userId);
+      await reportProfilePhoto(
+        route.params.userId,
+        undefined,
+        reportRequestId.current,
+      );
     } catch (error) {
       Alert.alert('Şikayet gönderilemedi', toAppError(error).message);
       return;
     }
+    reportRequestId.current = null;
     Alert.alert('Şikayet alındı', 'Bildirimin inceleme ekibine gönderildi.');
   }
   if (profile.isLoading)

@@ -8,4 +8,5 @@ module.exports = {
     throw new Error('File not found');
   },
   writeAsStringAsync: async () => undefined,
+  deleteAsync: async () => undefined,
 };

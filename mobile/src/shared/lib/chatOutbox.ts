@@ -17,6 +17,7 @@ export type OutboxMessage = {
   createdAt: string;
   attempt: number;
   nextAttemptAt: string;
+  deadLetteredAt?: string;
 };
 
 function isValidMessage(value: unknown): value is OutboxMessage {
@@ -30,7 +31,9 @@ function isValidMessage(value: unknown): value is OutboxMessage {
     typeof record.body === 'string' &&
     typeof record.createdAt === 'string' &&
     typeof record.attempt === 'number' &&
-    typeof record.nextAttemptAt === 'string'
+    typeof record.nextAttemptAt === 'string' &&
+    (record.deadLetteredAt === undefined ||
+      typeof record.deadLetteredAt === 'string')
   );
 }
 
@@ -143,6 +146,40 @@ export async function listOutbox(
   );
 }
 
+export async function listDeadLetters(
+  ownerId: string,
+  kind: OutboxKind,
+  contextId: string,
+): Promise<OutboxMessage[]> {
+  return (await listOutbox(ownerId, kind, contextId)).filter(message =>
+    Boolean(message.deadLetteredAt),
+  );
+}
+
+const ownerPurgeGenerations = new Map<string, number>();
+let allPurgeGeneration = 0;
+
+export async function purgeOutboxForOwner(ownerId: string): Promise<void> {
+  ownerPurgeGenerations.set(
+    ownerId,
+    (ownerPurgeGenerations.get(ownerId) ?? 0) + 1,
+  );
+  await withStorageLock(async () => {
+    const current = await readAllUnlocked();
+    await writeAllUnlocked(
+      current.filter(message => message.ownerId !== ownerId),
+    );
+  });
+}
+
+export async function purgeAllOutbox(): Promise<void> {
+  allPurgeGeneration += 1;
+  await withStorageLock(async () => {
+    await secureStorage.removeItem(storageKey);
+    await secureStorage.removeItem(backupStorageKey);
+  });
+}
+
 async function listAllOutbox(ownerId: string): Promise<OutboxMessage[]> {
   return withStorageLock(async () =>
     (await readAllUnlocked()).filter(message => message.ownerId === ownerId),
@@ -153,6 +190,10 @@ async function markAttempt(message: OutboxMessage): Promise<void> {
   await withStorageLock(async () => {
     const current = await readAllUnlocked();
     const attempt = message.attempt + 1;
+    const deadLetteredAt =
+      attempt >= outboxLimits.maxAttempts
+        ? new Date(Date.now()).toISOString()
+        : undefined;
     const nextAttemptAt = new Date(
       Date.now() + Math.min(60 * 60_000, 2 ** attempt * 1_000),
     ).toISOString();
@@ -160,7 +201,7 @@ async function markAttempt(message: OutboxMessage): Promise<void> {
       current.map(item =>
         item.ownerId === message.ownerId &&
         item.clientMessageId === message.clientMessageId
-          ? { ...item, attempt, nextAttemptAt }
+          ? { ...item, attempt, nextAttemptAt, deadLetteredAt }
           : item,
       ),
     );
@@ -175,12 +216,22 @@ export async function flushAllOutbox(
 ): Promise<void> {
   const existing = activeFlushes.get(ownerId);
   if (existing) return existing;
+  const ownerGeneration = ownerPurgeGenerations.get(ownerId) ?? 0;
+  const purgeGeneration = allPurgeGeneration;
   const flush = (async () => {
     const now = Date.now();
     const pending = (await listAllOutbox(ownerId)).filter(
-      message => new Date(message.nextAttemptAt).getTime() <= now,
+      message =>
+        !message.deadLetteredAt &&
+        new Date(message.nextAttemptAt).getTime() <= now,
     );
     for (const message of pending) {
+      if (
+        ownerGeneration !== (ownerPurgeGenerations.get(ownerId) ?? 0) ||
+        purgeGeneration !== allPurgeGeneration
+      ) {
+        break;
+      }
       try {
         await sender(message);
         await removeFromOutbox(ownerId, message.clientMessageId);

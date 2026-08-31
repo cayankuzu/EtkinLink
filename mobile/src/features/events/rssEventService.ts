@@ -2,7 +2,11 @@ import {
   normalizeTurkishSearch,
   TURKISH_CITIES,
 } from '@shared/constants/cities';
-import { fetchWithTimeout } from '@shared/lib/network';
+import { isAbortError } from '@shared/lib/errors';
+import {
+  fetchGetWithRetry,
+  readResponseTextLimited,
+} from '@shared/lib/network';
 import type { Event, EventSourceDetails } from '@shared/types/domain';
 import {
   addDays,
@@ -19,7 +23,9 @@ import type { EventCursor, EventFilters, EventPage } from './eventTypes';
 const etkinlikIoRssUrl = 'https://etkinlik.io/rss/sorgu';
 const etkinlikIoRssInfoUrl = 'https://etkinlik.io/rss/bilgi';
 const rssFeedLimit = 50;
-const rssRequestConcurrency = 20;
+const rssRequestConcurrency = 4;
+const rssResponseLimitBytes = 2 * 1024 * 1024;
+const detailResponseLimitBytes = 4 * 1024 * 1024;
 const rssIdPrefix = 'etkinlik-io-';
 let latestEvents: Event[] = [];
 const eventCache = new Map<string, Event>();
@@ -294,14 +300,22 @@ function parseRssCatalog(html: string): RssCatalog {
   return catalog;
 }
 
-async function getRssCatalog(): Promise<RssCatalog> {
-  if (catalogRequest) return catalogRequest;
-  catalogRequest = fetchWithTimeout(etkinlikIoRssInfoUrl, {
+async function requestRssCatalog(signal?: AbortSignal): Promise<RssCatalog> {
+  return fetchGetWithRetry(etkinlikIoRssInfoUrl, {
     headers: { Accept: 'text/html,application/xhtml+xml' },
+    signal,
   }).then(async response => {
     if (!response.ok) throw new Error('RSS filtre kataloğu yüklenemedi.');
-    return parseRssCatalog(await response.text());
+    return parseRssCatalog(
+      await readResponseTextLimited(response, detailResponseLimitBytes, signal),
+    );
   });
+}
+
+async function getRssCatalog(signal?: AbortSignal): Promise<RssCatalog> {
+  if (signal) return requestRssCatalog(signal);
+  if (catalogRequest) return catalogRequest;
+  catalogRequest = requestRssCatalog();
   try {
     return await catalogRequest;
   } catch (error) {
@@ -404,9 +418,12 @@ export function buildEtkinlikIoRssPartitionUrls(
   return partitionRssUrl(url, parseRssCatalog(catalogHtml));
 }
 
-async function filteredRssUrls(filters?: EventFilters): Promise<string[]> {
+async function filteredRssUrls(
+  filters?: EventFilters,
+  signal?: AbortSignal,
+): Promise<string[]> {
   if (!filters) return [etkinlikIoRssUrl];
-  return rssUrlsForCatalog(filters, await getRssCatalog());
+  return rssUrlsForCatalog(filters, await getRssCatalog(signal));
 }
 
 function itemToEvent(item: RssItem): Event | null {
@@ -464,45 +481,71 @@ export function parseEtkinlikIoRss(xml: string): Event[] {
   });
 }
 
-async function fetchRssUrl(url: string): Promise<Event[]> {
+async function requestRssUrl(
+  url: string,
+  signal?: AbortSignal,
+): Promise<Event[]> {
+  return fetchGetWithRetry(url, {
+    headers: { Accept: 'application/rss+xml, application/xml;q=0.9' },
+    signal,
+  }).then(async response => {
+    if (!response.ok) {
+      throw Object.assign(
+        new Error(`Etkinlik.io RSS isteği başarısız (${response.status}).`),
+        { status: response.status },
+      );
+    }
+    const events = parseEtkinlikIoRss(
+      await readResponseTextLimited(response, rssResponseLimitBytes, signal),
+    );
+    events.forEach(event => eventCache.set(event.id, preserveCardState(event)));
+    feedCache.set(url, { events, fetchedAt: Date.now() });
+    return events;
+  });
+}
+
+async function fetchRssUrl(
+  url: string,
+  signal?: AbortSignal,
+): Promise<Event[]> {
   const cached = feedCache.get(url);
   if (cached && Date.now() - cached.fetchedAt < feedCacheDurationMs) {
     return cached.events;
   }
+  if (signal) return requestRssUrl(url, signal);
   const activeRequest = feedRequests.get(url);
   if (activeRequest) return activeRequest;
-  const request = fetchWithTimeout(url, {
-    headers: { Accept: 'application/rss+xml, application/xml;q=0.9' },
-  })
-    .then(async response => {
-      if (!response.ok) {
-        throw new Error(
-          `Etkinlik.io RSS isteği başarısız (${response.status}).`,
-        );
-      }
-      const events = parseEtkinlikIoRss(await response.text());
-      events.forEach(event =>
-        eventCache.set(event.id, preserveCardState(event)),
-      );
-      feedCache.set(url, { events, fetchedAt: Date.now() });
-      return events;
-    })
-    .finally(() => {
-      feedRequests.delete(url);
-    });
+  const request = requestRssUrl(url).finally(() => {
+    feedRequests.delete(url);
+  });
   feedRequests.set(url, request);
   return request;
 }
 
-async function fetchRssUrlSet(urls: string[]): Promise<{
+async function fetchRssUrlSet(
+  urls: string[],
+  signal?: AbortSignal,
+): Promise<{
   feeds: Map<string, Event[]>;
   firstError: unknown;
 }> {
   const feeds = new Map<string, Event[]>();
   let firstError: unknown = null;
   for (let index = 0; index < urls.length; index += rssRequestConcurrency) {
+    if (signal?.aborted) {
+      const error = new Error('RSS isteği iptal edildi.');
+      error.name = 'AbortError';
+      throw error;
+    }
     const chunk = urls.slice(index, index + rssRequestConcurrency);
-    const results = await Promise.allSettled(chunk.map(fetchRssUrl));
+    const results = await Promise.allSettled(
+      chunk.map(url => fetchRssUrl(url, signal)),
+    );
+    if (signal?.aborted) {
+      const error = new Error('RSS isteği iptal edildi.');
+      error.name = 'AbortError';
+      throw error;
+    }
     results.forEach((result, resultIndex) => {
       const url = chunk[resultIndex];
       if (!url) return;
@@ -513,21 +556,24 @@ async function fetchRssUrlSet(urls: string[]): Promise<{
   return { feeds, firstError };
 }
 
-async function fetchRssEvents(filters?: EventFilters): Promise<Event[]> {
-  const urls = await filteredRssUrls(filters);
-  const initial = await fetchRssUrlSet(urls);
+async function fetchRssEvents(
+  filters?: EventFilters,
+  signal?: AbortSignal,
+): Promise<Event[]> {
+  const urls = await filteredRssUrls(filters, signal);
+  const initial = await fetchRssUrlSet(urls, signal);
   const feeds = initial.feeds;
   let firstError = initial.firstError;
   const saturatedUrls = urls.filter(
     url => feeds.get(url)?.length === rssFeedLimit,
   );
   if (saturatedUrls.length > 0) {
-    const catalog = await getRssCatalog();
+    const catalog = await getRssCatalog(signal);
     const existingUrls = new Set(urls);
     const partitionUrls = [
       ...new Set(saturatedUrls.flatMap(url => partitionRssUrl(url, catalog))),
     ].filter(url => !existingUrls.has(url));
-    const partitions = await fetchRssUrlSet(partitionUrls);
+    const partitions = await fetchRssUrlSet(partitionUrls, signal);
     for (const [url, events] of partitions.feeds) feeds.set(url, events);
     firstError ??= partitions.firstError;
   }
@@ -546,10 +592,13 @@ async function fetchRssEvents(filters?: EventFilters): Promise<Event[]> {
   return events;
 }
 
-async function fetchRssEventPreview(filters: EventFilters): Promise<Event[]> {
-  const urls = await filteredRssUrls(filters);
+async function fetchRssEventPreview(
+  filters: EventFilters,
+  signal?: AbortSignal,
+): Promise<Event[]> {
+  const urls = await filteredRssUrls(filters, signal);
   const previewUrls = filters.categories.length > 0 ? urls : urls.slice(0, 1);
-  const { feeds, firstError } = await fetchRssUrlSet(previewUrls);
+  const { feeds, firstError } = await fetchRssUrlSet(previewUrls, signal);
   const merged = new Map<string, Event>();
   for (const feed of feeds.values()) {
     for (const event of feed) merged.set(event.id, event);
@@ -568,7 +617,12 @@ async function fetchRssEventPreview(filters: EventFilters): Promise<Event[]> {
 }
 
 export function clearRssFeedCache(): void {
+  latestEvents = [];
+  eventCache.clear();
+  feedRequests.clear();
   feedCache.clear();
+  detailRequests.clear();
+  catalogRequest = null;
 }
 
 function matchesCategory(event: Event, category: string): boolean {
@@ -708,14 +762,19 @@ export async function listRssCategories(): Promise<string[]> {
 export async function searchRssEvents(
   filters: EventFilters,
   _cursor: EventCursor | null,
+  signal?: AbortSignal,
 ): Promise<EventPage> {
-  return createRssEventPage(await fetchRssEvents(filters), filters);
+  return createRssEventPage(await fetchRssEvents(filters, signal), filters);
 }
 
 export async function searchRssEventsPreview(
   filters: EventFilters,
+  signal?: AbortSignal,
 ): Promise<EventPage> {
-  return createRssEventPage(await fetchRssEventPreview(filters), filters);
+  return createRssEventPage(
+    await fetchRssEventPreview(filters, signal),
+    filters,
+  );
 }
 
 export function createRssEventPage(
@@ -728,24 +787,38 @@ export function createRssEventPage(
   };
 }
 
-export async function getRssEvent(eventId: string): Promise<Event> {
-  const event = await getRssEventPreview(eventId);
+export async function getRssEvent(
+  eventId: string,
+  signal?: AbortSignal,
+): Promise<Event> {
+  const event = await getRssEventPreview(eventId, signal);
   if (!event) throw new Error('Etkinlik RSS akışında bulunamadı.');
   const existing = detailRequests.get(eventId);
   if (existing) return existing;
-  const request = fetchWithTimeout(event.sourceUrl, {
+  const request = fetchGetWithRetry(event.sourceUrl, {
     headers: { Accept: 'text/html,application/xhtml+xml' },
+    signal,
   })
     .then(async response => {
       if (!response.ok) return event;
-      const enriched = parseEtkinlikIoDetailHtml(await response.text(), event);
+      const enriched = parseEtkinlikIoDetailHtml(
+        await readResponseTextLimited(
+          response,
+          detailResponseLimitBytes,
+          signal,
+        ),
+        event,
+      );
       latestEvents = latestEvents.map(item =>
         item.id === eventId ? enriched : item,
       );
       eventCache.set(eventId, enriched);
       return enriched;
     })
-    .catch(() => event);
+    .catch(error => {
+      if (signal?.aborted || isAbortError(error)) throw error;
+      return event;
+    });
   detailRequests.set(eventId, request);
   return request;
 }
@@ -766,10 +839,14 @@ export function getCachedRssEvent(eventId: string): Event | undefined {
   );
 }
 
-export async function getRssEventPreview(eventId: string): Promise<Event> {
+export async function getRssEventPreview(
+  eventId: string,
+  signal?: AbortSignal,
+): Promise<Event> {
   const cached = getCachedRssEvent(eventId);
   const event =
-    cached ?? (await fetchRssEvents()).find(item => item.id === eventId);
+    cached ??
+    (await fetchRssEvents(undefined, signal)).find(item => item.id === eventId);
   if (!event) throw new Error('Etkinlik RSS akışında bulunamadı.');
   return event;
 }

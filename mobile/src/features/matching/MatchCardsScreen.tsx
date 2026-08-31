@@ -18,6 +18,7 @@ import {
   StateView,
 } from '@shared/components';
 import { toAppError } from '@shared/lib/errors';
+import { createClientId } from '@shared/lib/ids';
 import { queryKeys } from '@shared/lib/queryKeys';
 import { colors, radius, shadows, spacing } from '@shared/theme';
 import type { Candidate } from '@shared/types/domain';
@@ -76,6 +77,7 @@ export function MatchCardsScreen({ route, navigation }: Props) {
   const [actionError, setActionError] = useState<string | null>(null);
   const swipePending = useRef(false);
   const finishSwipeRef = useRef<(kind: SwipeAction) => void>(() => undefined);
+  const reportRequestIds = useRef(new Map<string, string>());
   const dispatchSwipe = useCallback(
     (kind: SwipeAction) => finishSwipeRef.current(kind),
     [],
@@ -145,8 +147,12 @@ export function MatchCardsScreen({ route, navigation }: Props) {
 
   const reportPhoto = useCallback(
     async (candidate: Candidate) => {
+      const existingRequestId = reportRequestIds.current.get(candidate.id);
+      const requestId = existingRequestId ?? createClientId();
+      reportRequestIds.current.set(candidate.id, requestId);
       try {
-        await reportProfilePhoto(candidate.id, route.params.eventId);
+        await reportProfilePhoto(candidate.id, route.params.eventId, requestId);
+        reportRequestIds.current.delete(candidate.id);
         Alert.alert(
           'Şikayet alındı',
           'Bildirimin inceleme ekibine gönderildi.',

@@ -1,0 +1,113 @@
+name: EAS Update preview validation (publication blocked)
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: "Full 40-character commit SHA to validate; publication is blocked"
+        required: true
+        type: string
+      base_sha:
+        description: "Full 40-character previously released/native baseline SHA"
+        required: true
+        type: string
+      mobile_ci_run_id:
+        description: "Successful same-SHA mobile-ci.yml run ID"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: eas-update-preview-${{ inputs.target_sha }}
+  cancel-in-progress: false
+
+jobs:
+  validate-preview-no-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment: preview
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.target_sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - name: Verify immutable checkout
+        id: immutable
+        shell: bash
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
+          BASE_SHA: ${{ inputs.base_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git cat-file -e "${BASE_SHA}^{commit}"
+          git merge-base --is-ancestor "$BASE_SHA" "$TARGET_SHA"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          echo "sha=$TARGET_SHA" >> "$GITHUB_OUTPUT"
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+      - name: Enforce frozen product surface
+        working-directory: .
+        run: node scripts/guards/check-no-new-product-surface.mjs
+      - name: Require successful same-SHA full CI
+        shell: bash
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          QUALITY_RUN_ID: ${{ inputs.mobile_ci_run_id }}
+          TARGET_SHA: ${{ steps.immutable.outputs.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$QUALITY_RUN_ID" =~ ^[0-9]+$ ]]
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${QUALITY_RUN_ID}" > "$RUNNER_TEMP/mobile-ci-run.json"
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const run = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/mobile-ci-run.json`, 'utf8'));
+          if (run.conclusion !== 'success') throw new Error('Mobile CI did not succeed.');
+          if (run.head_sha !== process.env.TARGET_SHA) throw new Error('Mobile CI SHA mismatch.');
+          if (!String(run.path ?? '').endsWith('/mobile-ci.yml')) throw new Error('Run is not mobile-ci.yml.');
+          NODE
+      - run: npm ci
+      - name: Re-run mobile quality gates at target SHA
+        run: npm run verify
+      - name: Validate preview native edge origin contract
+        shell: bash
+        env:
+          EDGE_API_BASE_URL: ${{ vars.EDGE_API_BASE_URL }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const value = process.env.EDGE_API_BASE_URL ?? '';
+          if (value) {
+            const url = new URL(value);
+            if (url.protocol !== 'https:' || url.origin !== value.replace(/\/$/u, '') || url.pathname !== '/' || url.search || url.hash || url.username || url.password) {
+              throw new Error('EDGE_API_BASE_URL must be a bare HTTPS origin.');
+            }
+          }
+          NODE
+          npm run release:check
+      - name: Classify target diff (fail closed)
+        id: classify
+        env:
+          OTA_BASE_SHA: ${{ steps.immutable.outputs.base_sha }}
+          OTA_HEAD_SHA: ${{ steps.immutable.outputs.sha }}
+        run: node scripts/classify-update.mjs --assert-ota-safe
+      - name: Block unsigned or trust-ambiguous preview publication
+        shell: bash
+        working-directory: .
+        run: |
+          echo "::error::Preview OTA publication is intentionally blocked. A reviewed trust design must define a signing key/certificate for preview without exposing or reusing the production private key."
+          echo "Quality and OTA_SAFE classification completed, but this workflow contains no EAS publish or channel mutation command."
+          exit 1

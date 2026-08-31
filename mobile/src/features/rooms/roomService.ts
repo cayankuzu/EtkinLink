@@ -1,4 +1,5 @@
 import { paginationLimits } from '@shared/constants/limits';
+import { createClientId } from '@shared/lib/ids';
 import { applyAbortSignal } from '@shared/lib/network';
 import { getSignedProfilePhotoUrls } from '@shared/lib/profilePhotoUrls';
 import { supabase } from '@shared/lib/supabase';
@@ -147,10 +148,14 @@ export function subscribeToRoomListChanges(onChange: () => void): () => void {
   };
 }
 
-export async function submitRoomReport(eventId: string): Promise<void> {
+export async function submitRoomReport(
+  eventId: string,
+  clientRequestId = createClientId(),
+): Promise<void> {
   const { error } = await supabase.rpc('submit_room_report', {
     target_event_id: eventId,
     reason: 'other',
+    client_request_id: clientRequestId,
     details: 'Kullanıcı oda seçeneklerinden bu etkinlik odasını bildirdi.',
   });
   if (error) throw error;

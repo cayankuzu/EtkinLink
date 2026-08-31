@@ -14,6 +14,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.delete-account]
+# The function performs its own recent-user-JWT or scoped HMAC+nonce check.
 verify_jwt = false
 
 [functions.push-dispatch]

@@ -1,0 +1,8 @@
+{
+  "lint": {
+    "exclude": ["supabase/functions/**/*.test.ts"],
+    "rules": {
+      "exclude": ["no-import-prefix"]
+    }
+  }
+}

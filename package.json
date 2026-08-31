@@ -9,7 +9,9 @@
     "typecheck": "npm --prefix mobile run typecheck",
     "lint": "npm --prefix mobile run lint",
     "test": "npm --prefix mobile run test",
-    "verify": "npm --prefix mobile run verify",
+    "verify": "npm run feature-freeze && npm run release:evidence:test && npm --prefix mobile run verify",
+    "feature-freeze": "node scripts/guards/check-no-new-product-surface.mjs",
+    "release:evidence:test": "node --test scripts/release/generate-evidence-manifest.test.mjs",
     "build:debug": "npm --prefix mobile run build:debug",
     "doctor": "npm --prefix mobile run doctor"
   },

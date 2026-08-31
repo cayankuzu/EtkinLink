@@ -227,7 +227,7 @@ describe('useEventDetailController', () => {
     ]);
   });
 
-  it('mutation ve harici URL hatalarını kullanıcıya açık duruma çevirir', async () => {
+  it('mutation ve harici URL hata ayrıntılarını güvenli kullanıcı mesajına çevirir', async () => {
     const harness = createHarness();
     mockJoinEvent.mockRejectedValue(new Error('Katılım reddedildi'));
     const openUrl = jest
@@ -249,7 +249,9 @@ describe('useEventDetailController', () => {
     });
     expect(mutationError).toEqual(new Error('Katılım reddedildi'));
     await waitFor(() =>
-      expect(result.current.actionError).toBe('Katılım reddedildi'),
+      expect(result.current.actionError).toBe(
+        'Beklenmeyen bir sorun oluştu. Lütfen tekrar dene.',
+      ),
     );
     expect(mockGetParticipationProfileStatus).toHaveBeenCalledTimes(2);
 
@@ -257,7 +259,9 @@ describe('useEventDetailController', () => {
       await result.current.openUrl(event.sourceUrl);
     });
     expect(openUrl).toHaveBeenCalledWith(event.sourceUrl);
-    expect(result.current.actionError).toBe('Bağlantı açılamadı');
+    expect(result.current.actionError).toBe(
+      'Beklenmeyen bir sorun oluştu. Lütfen tekrar dene.',
+    );
     openUrl.mockRestore();
   });
 });

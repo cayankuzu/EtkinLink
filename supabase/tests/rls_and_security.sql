@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(34);
+select plan(50);
 
 select is(
   (
@@ -87,6 +87,35 @@ select ok(
 select ok(
   has_function_privilege('service_role', 'public.claim_pending_push_receipts(integer)', 'EXECUTE'),
   'Yalnız service role push receipt claim edebilir'
+);
+
+select ok(
+  not has_function_privilege('anon', 'public.ingest_events_batch(jsonb)', 'EXECUTE'),
+  'Anon atomik etkinlik ingestion RPC çağırmaz'
+);
+
+select ok(
+  not has_function_privilege('authenticated', 'public.ingest_events_batch(jsonb)', 'EXECUTE'),
+  'Authenticated kullanıcı atomik etkinlik ingestion RPC çağırmaz'
+);
+
+select ok(
+  has_function_privilege('service_role', 'public.ingest_events_batch(jsonb)', 'EXECUTE'),
+  'Yalnız service role atomik etkinlik ingestion RPC çağırabilir'
+);
+
+select ok(
+  coalesce(
+    (
+      select qual
+      from pg_policies
+      where schemaname = 'realtime'
+        and tablename = 'messages'
+        and policyname = 'event attendees receive private room realtime'
+    ),
+    ''
+  ) like '%status%joined%',
+  'Private oda Realtime alımı güncel joined üyeliği gerektirir'
 );
 
 select ok(
@@ -388,11 +417,244 @@ select is(
   'Kaldırılan DB RPC auth.users kaydını silemez'
 );
 
+update public.event_attendees
+set status = 'left', left_at = now()
+where event_id = '10000000-0000-4000-8000-000000000001'
+  and user_id = '00000000-0000-4000-8000-000000000002';
+
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000002', true);
+select set_config('request.jwt.claim.role', 'authenticated', true);
+
+select is(
+  (select count(*) from public.room_messages),
+  0::bigint,
+  'Odadan ayrılan User B eski oda mesajlarını SELECT veya Postgres Changes ile okuyamaz'
+);
+
+reset role;
 set local role service_role;
 select is(
   (select count(*) from public.direct_messages),
   8::bigint,
   'Service role operasyonel özel mesaj erişimini korur'
+);
+
+select is(
+  public.ingest_events_batch(
+    jsonb_build_array(
+      jsonb_build_object(
+        'external_id', 9100001,
+        'source_guid', 'https://example.test/ingest-1',
+        'source_url', 'https://example.test/ingest-1',
+        'title', 'Atomik Etkinlik Bir',
+        'start_at', '2026-09-01T10:00:00Z',
+        'image_url', 'https://example.test/ingest-1.jpg',
+        'categories', jsonb_build_array('Test'),
+        'is_cancelled', false,
+        'raw_source', '{}'::jsonb,
+        'ingested_at', '2026-08-30T12:00:00Z'
+      ),
+      jsonb_build_object(
+        'external_id', 9100002,
+        'source_guid', 'https://example.test/ingest-2',
+        'source_url', 'https://example.test/ingest-2',
+        'title', 'Atomik Etkinlik İki',
+        'start_at', '2026-09-02T10:00:00Z',
+        'image_url', 'https://example.test/ingest-2.jpg',
+        'categories', jsonb_build_array('Test'),
+        'is_cancelled', false,
+        'raw_source', '{}'::jsonb,
+        'ingested_at', '2026-08-30T12:00:00Z'
+      )
+    )
+  ),
+  2,
+  'Atomik ingestion RPC geçerli batch satırlarının tamamını işler'
+);
+
+select is(
+  public.ingest_events_batch(
+    jsonb_build_array(
+      jsonb_build_object(
+        'external_id', 9100001,
+        'source_guid', 'https://example.test/ingest-1',
+        'source_url', 'https://example.test/ingest-1',
+        'title', 'Atomik Etkinlik Bir',
+        'start_at', '2026-09-01T10:00:00Z',
+        'image_url', 'https://example.test/ingest-1.jpg',
+        'categories', jsonb_build_array('Test'),
+        'is_cancelled', false,
+        'raw_source', '{}'::jsonb,
+        'ingested_at', '2026-08-30T12:00:00Z'
+      ),
+      jsonb_build_object(
+        'external_id', 9100002,
+        'source_guid', 'https://example.test/ingest-2',
+        'source_url', 'https://example.test/ingest-2',
+        'title', 'Atomik Etkinlik İki',
+        'start_at', '2026-09-02T10:00:00Z',
+        'image_url', 'https://example.test/ingest-2.jpg',
+        'categories', jsonb_build_array('Test'),
+        'is_cancelled', false,
+        'raw_source', '{}'::jsonb,
+        'ingested_at', '2026-08-30T12:00:00Z'
+      )
+    )
+  ),
+  2,
+  'Aynı ingestion batch güvenle tekrar işlenebilir'
+);
+
+select is(
+  (
+    select count(*)
+    from public.events
+    where external_id in (9100001, 9100002)
+  ),
+  2::bigint,
+  'Tekrarlanan ingestion batch mükerrer event üretmez'
+);
+
+select is(
+  public.ingest_events_batch(
+    jsonb_build_array(
+      jsonb_build_object(
+        'external_id', 9100001,
+        'source_guid', 'https://example.test/ingest-1',
+        'source_url', 'https://example.test/ingest-1',
+        'title', 'Kaynak Sürümü Yeni',
+        'start_at', '2026-09-01T10:00:00Z',
+        'image_url', 'https://example.test/ingest-1.jpg',
+        'categories', jsonb_build_array('Test'),
+        'source_updated_at', '2026-08-30T13:00:00Z',
+        'is_cancelled', false,
+        'raw_source', '{"version":"newer"}'::jsonb,
+        'ingested_at', '2026-08-30T13:05:00Z'
+      )
+    )
+  ),
+  1,
+  'Daha yeni provider sürümü ingestion sırasında işlenir'
+);
+
+select is(
+  public.ingest_events_batch(
+    jsonb_build_array(
+      jsonb_build_object(
+        'external_id', 9100001,
+        'source_guid', 'https://example.test/ingest-1',
+        'source_url', 'https://example.test/ingest-1',
+        'title', 'Kaynak Sürümü Eski',
+        'start_at', '2026-09-01T10:00:00Z',
+        'image_url', 'https://example.test/ingest-1.jpg',
+        'categories', jsonb_build_array('Test'),
+        'source_updated_at', '2026-08-30T12:00:00Z',
+        'is_cancelled', false,
+        'raw_source', '{"version":"older"}'::jsonb,
+        'ingested_at', '2026-08-30T14:00:00Z'
+      )
+    )
+  ),
+  1,
+  'Yoksayılan stale provider satırı RPC batch-size sözleşmesini korur'
+);
+
+select is(
+  (select title from public.events where external_id = 9100001),
+  'Kaynak Sürümü Yeni',
+  'Daha eski provider sürümü yeni event verisini geri alamaz'
+);
+
+select is(
+  public.ingest_events_batch(
+    jsonb_build_array(
+      jsonb_build_object(
+        'external_id', 9100002,
+        'source_guid', 'https://example.test/ingest-2',
+        'source_url', 'https://example.test/ingest-2',
+        'title', 'Run Sürümü Yeni',
+        'start_at', '2026-09-02T10:00:00Z',
+        'image_url', 'https://example.test/ingest-2.jpg',
+        'categories', jsonb_build_array('Test'),
+        'is_cancelled', false,
+        'raw_source', '{"version":"run-newer"}'::jsonb,
+        'ingested_at', '2026-08-30T14:00:00Z'
+      )
+    )
+  ),
+  1,
+  'Provider sürümü yoksa daha yeni run-start fallback işlenir'
+);
+
+select is(
+  public.ingest_events_batch(
+    jsonb_build_array(
+      jsonb_build_object(
+        'external_id', 9100002,
+        'source_guid', 'https://example.test/ingest-2',
+        'source_url', 'https://example.test/ingest-2',
+        'title', 'Run Sürümü Eski',
+        'start_at', '2026-09-02T10:00:00Z',
+        'image_url', 'https://example.test/ingest-2.jpg',
+        'categories', jsonb_build_array('Test'),
+        'is_cancelled', false,
+        'raw_source', '{"version":"run-older"}'::jsonb,
+        'ingested_at', '2026-08-30T13:00:00Z'
+      )
+    )
+  ),
+  1,
+  'Yoksayılan stale run satırı RPC batch-size sözleşmesini korur'
+);
+
+select is(
+  (select title from public.events where external_id = 9100002),
+  'Run Sürümü Yeni',
+  'Eski run-start fallback yeni event verisini geri alamaz'
+);
+
+select throws_ok(
+  $$
+    select public.ingest_events_batch(
+      jsonb_build_array(
+        jsonb_build_object(
+          'external_id', 9100003,
+          'source_guid', 'https://example.test/ingest-3',
+          'source_url', 'https://example.test/ingest-3',
+          'title', 'Rollback Kontrol Etkinliği',
+          'start_at', '2026-09-03T10:00:00Z',
+          'categories', jsonb_build_array('Test'),
+          'is_cancelled', false,
+          'raw_source', '{}'::jsonb,
+          'ingested_at', '2026-08-30T12:00:00Z'
+        ),
+        jsonb_build_object(
+          'external_id', 9100004,
+          'source_guid', 'https://example.test/ingest-4',
+          'source_url', 'https://example.test/ingest-4',
+          'start_at', '2026-09-04T10:00:00Z',
+          'categories', jsonb_build_array('Test'),
+          'is_cancelled', false,
+          'raw_source', '{}'::jsonb,
+          'ingested_at', '2026-08-30T12:00:00Z'
+        )
+      )
+    )
+  $$,
+  '23502',
+  null,
+  'Geçersiz tek satır ingestion batch işleminin tamamını reddeder'
+);
+
+select is(
+  (
+    select count(*)
+    from public.events
+    where external_id in (9100003, 9100004)
+  ),
+  0::bigint,
+  'Reddedilen ingestion batch görünür kısmi event bırakmaz'
 );
 
 reset role;

@@ -5,6 +5,7 @@ import {
   buildEtkinlikIoRssPartitionUrls,
   buildEtkinlikIoRssUrls,
   cacheRssEvents,
+  clearRssFeedCache,
   createRssEventPage,
   getCachedRssEvent,
   parseEtkinlikIoDetailHtml,
@@ -293,5 +294,19 @@ describe('Etkinlik.io RSS adaptörü', () => {
 
     expect(page.items).toHaveLength(75);
     expect(page.nextCursor).toBeNull();
+  });
+});
+
+describe('RSS personalized memory cleanup', () => {
+  afterEach(clearRssFeedCache);
+
+  it('removes cached personalized event state', () => {
+    const event = parseEtkinlikIoRss(sample)[0];
+    if (!event) throw new Error('The test RSS event was not created.');
+    cacheRssEvents([{ ...event, joined: true, saved: true }]);
+
+    clearRssFeedCache();
+
+    expect(getCachedRssEvent(event.id)).toBeUndefined();
   });
 });

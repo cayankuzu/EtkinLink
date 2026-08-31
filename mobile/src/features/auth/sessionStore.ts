@@ -1,9 +1,14 @@
+import { clearEventFeedSnapshot } from '@features/events/eventFeedSnapshot';
+import { clearEventFeedCache } from '@features/events/eventService';
+import { releaseProfilePhotoCleanupMemory } from '@features/profile/profileService';
+import { purgeAllOutbox, purgeOutboxForOwner } from '@shared/lib/chatOutbox';
 import { unregisterCurrentPushToken } from '@shared/lib/pushNotifications';
 import { queryClient } from '@shared/lib/queryClient';
 import { supabase } from '@shared/lib/supabase';
 import { captureAppError } from '@shared/lib/telemetry';
 import type { Database } from '@shared/types/database';
 import type { Session } from '@supabase/supabase-js';
+import { Image as ExpoImage } from 'expo-image';
 import { create } from 'zustand';
 
 import { clearPendingVerification } from './pendingVerificationService';
@@ -30,6 +35,39 @@ async function fetchProfile(userId: string): Promise<ProfileRow | null> {
   return data.find(profile => profile.id === userId) ?? null;
 }
 
+async function runLocalCleanup(
+  flow: string,
+  cleanup: () => Promise<unknown> | unknown,
+): Promise<void> {
+  try {
+    await cleanup();
+  } catch (error) {
+    captureAppError(error, { flow });
+  }
+}
+
+async function clearLocalSessionData(ownerId: string | null): Promise<void> {
+  await Promise.all([
+    runLocalCleanup('session.cleanup.query_cache', () => queryClient.clear()),
+    runLocalCleanup('session.cleanup.event_cache', () => clearEventFeedCache()),
+    runLocalCleanup('session.cleanup.event_snapshot', () =>
+      clearEventFeedSnapshot(),
+    ),
+    runLocalCleanup('session.cleanup.image_memory_cache', () =>
+      ExpoImage.clearMemoryCache(),
+    ),
+    runLocalCleanup('session.cleanup.profile_photo_tombstones', () =>
+      releaseProfilePhotoCleanupMemory(ownerId),
+    ),
+    runLocalCleanup('session.cleanup.chat_outbox', () =>
+      ownerId ? purgeOutboxForOwner(ownerId) : purgeAllOutbox(),
+    ),
+    runLocalCleanup('session.cleanup.realtime_channels', () =>
+      supabase.removeAllChannels(),
+    ),
+  ]);
+}
+
 export const useSessionStore = create<SessionState>((set, get) => ({
   phase: 'booting',
   session: null,
@@ -54,12 +92,13 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   async setSession(session) {
     if (!session) {
+      const ownerId = get().session?.user.id ?? null;
       set({
         phase: 'signedOut',
         session: null,
         profile: null,
       });
-      queryClient.clear();
+      await clearLocalSessionData(ownerId);
       return;
     }
 
@@ -114,6 +153,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
 
   async signOut() {
+    const ownerId = get().session?.user.id ?? null;
     try {
       await unregisterCurrentPushToken();
     } catch (pushError) {
@@ -121,13 +161,19 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       // prevent the user from closing the local session.
       console.warn('Push bildirimi cihaz kaydı kapatılamadı.', pushError);
     }
-    const { error } = await supabase.auth.signOut({ scope: 'local' });
-    if (error) throw error;
+    let signOutError: unknown = null;
+    try {
+      const { error } = await supabase.auth.signOut({ scope: 'local' });
+      signOutError = error;
+    } catch (error) {
+      signOutError = error;
+    }
     set({
       phase: 'signedOut',
       session: null,
       profile: null,
     });
-    queryClient.clear();
+    await clearLocalSessionData(ownerId);
+    if (signOutError) throw signOutError;
   },
 }));

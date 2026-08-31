@@ -1,4 +1,12 @@
+import { env } from '@shared/config/env';
 import { normalizeTurkishSearch } from '@shared/constants/cities';
+import {
+  AppError,
+  isAbortError,
+  isTransientError,
+  toAppError,
+} from '@shared/lib/errors';
+import { fetchWithTimeout, readResponseTextLimited } from '@shared/lib/network';
 import { supabase } from '@shared/lib/supabase';
 import type { Event } from '@shared/types/domain';
 import {
@@ -15,6 +23,7 @@ import type { EventCursor, EventFilters, EventPage } from './eventTypes';
 
 const eventCache = new Map<string, Event>();
 const requests = new Map<string, Promise<ApiListResponse>>();
+const edgeResponseLimitBytes = 2 * 1024 * 1024;
 
 type ApiListResponse = {
   events: Event[];
@@ -61,7 +70,7 @@ function dateRange(date: EventFilters['date']): {
   return { startAt: null, endAt: null };
 }
 
-async function invokeApi<T>(
+async function invokeSupabaseApi<T>(
   body: Record<string, unknown>,
   signal?: AbortSignal,
 ): Promise<T> {
@@ -75,7 +84,9 @@ async function invokeApi<T>(
       try {
         const payload = (await context.clone().json()) as { error?: unknown };
         if (typeof payload.error === 'string' && payload.error.trim()) {
-          throw new Error(payload.error.trim());
+          throw Object.assign(new Error(payload.error.trim()), {
+            status: context.status,
+          });
         }
       } catch (contextError) {
         if (contextError instanceof Error && contextError !== error) {
@@ -87,6 +98,79 @@ async function invokeApi<T>(
   }
   if (!data) throw new Error('Etkinlik.io API boş yanıt döndürdü.');
   return data;
+}
+
+async function invokeEdgeApi<T>(
+  body: Record<string, unknown>,
+  signal?: AbortSignal,
+): Promise<T> {
+  const { data, error: authError } = await supabase.auth.getSession();
+  if (authError) throw authError;
+  const accessToken = data.session?.access_token;
+  if (!accessToken || !env.edgeApiBaseUrl) {
+    return invokeSupabaseApi<T>(body, signal);
+  }
+  const response = await fetchWithTimeout(`${env.edgeApiBaseUrl}/v1/events`, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+    signal,
+  });
+  const responseText = await readResponseTextLimited(
+    response,
+    edgeResponseLimitBytes,
+    signal,
+  );
+  let payload: unknown;
+  try {
+    payload = responseText ? JSON.parse(responseText) : null;
+  } catch (parseError) {
+    throw new AppError(
+      'unavailable',
+      'Etkinlik hizmeti geçici olarak geçersiz yanıt verdi.',
+      parseError,
+    );
+  }
+  if (!response.ok) {
+    const serverMessage =
+      payload &&
+      typeof payload === 'object' &&
+      'error' in payload &&
+      typeof payload.error === 'string'
+        ? payload.error
+        : 'Edge gateway request failed.';
+    throw toAppError(
+      Object.assign(new Error(serverMessage), { status: response.status }),
+    );
+  }
+  if (!payload || typeof payload !== 'object') {
+    throw new AppError(
+      'unavailable',
+      'Etkinlik hizmeti geçici olarak boş yanıt verdi.',
+    );
+  }
+  return payload as T;
+}
+
+async function invokeApi<T>(
+  body: Record<string, unknown>,
+  signal?: AbortSignal,
+): Promise<T> {
+  if (!env.edgeApiBaseUrl) return invokeSupabaseApi<T>(body, signal);
+  try {
+    return await invokeEdgeApi<T>(body, signal);
+  } catch (error) {
+    if (signal?.aborted || isAbortError(error) || !isTransientError(error)) {
+      throw error;
+    }
+    // Direct-origin remains an explicit rollback path until edge adoption and
+    // rollback evidence are attached to the release SHA.
+    return invokeSupabaseApi<T>(body, signal);
+  }
 }
 
 function cacheEvents(events: Event[]): Event[] {
@@ -117,6 +201,7 @@ async function listApiPage(
   filters: EventFilters,
   skip: number,
   take: number,
+  signal?: AbortSignal,
 ): Promise<ApiListResponse> {
   const range = dateRange(filters.date);
   const body = {
@@ -129,6 +214,10 @@ async function listApiPage(
     skip,
     take,
   };
+  if (signal) {
+    const response = await invokeApi<ApiListResponse>(body, signal);
+    return { ...response, events: cacheEvents(response.events) };
+  }
   const key = JSON.stringify(body);
   const existing = requests.get(key);
   if (existing) return existing;
@@ -144,8 +233,14 @@ export async function searchApiEvents(
   filters: EventFilters,
   cursor: EventCursor | null = null,
   take = 30,
+  signal?: AbortSignal,
 ): Promise<EventPage> {
-  const response = await listApiPage(filters, cursor?.offset ?? 0, take);
+  const response = await listApiPage(
+    filters,
+    cursor?.offset ?? 0,
+    take,
+    signal,
+  );
   return {
     items: response.events.filter(event => matchesQuery(event, filters.query)),
     nextCursor:
@@ -183,6 +278,7 @@ export function cacheApiEvents(events: Event[]): void {
 }
 
 export function clearApiEventCache(): void {
+  eventCache.clear();
   requests.clear();
 }
 
