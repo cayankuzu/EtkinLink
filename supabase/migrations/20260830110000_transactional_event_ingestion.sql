@@ -8,7 +8,6 @@ set search_path = ''
 as $$
 declare
   batch_size integer;
-  persisted_count integer;
 begin
   if event_rows is null or jsonb_typeof(event_rows) <> 'array' then
     raise exception using
@@ -115,8 +114,7 @@ begin
       ingested_at
     from parsed_events
     order by external_id, ordinality desc
-  ),
-  upserted_events as (
+  )
     insert into public.events as stored_event (
       external_id,
       source_guid,
@@ -185,12 +183,7 @@ begin
     ) >= coalesce(
       stored_event.source_updated_at,
       stored_event.ingested_at
-    )
-    returning 1
-  )
-  select count(*)::integer
-  into persisted_count
-  from upserted_events;
+    );
 
   -- Stale rows intentionally skipped by the conflict guard are still valid,
   -- fully processed input. Preserve the RPC's batch-size contract so callers
