@@ -20,6 +20,7 @@ mobile-pre-expo-ntfs-backup-*/
 .expo/
 .expo*/
 artifacts/
+mobile/release-evidence/local/
 mobile/current.png
 mobile/join.png
 *.apk
