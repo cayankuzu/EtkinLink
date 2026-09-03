@@ -144,7 +144,11 @@ export function AgeRangeSlider({
           </AppText>
         </View>
       </View>
+      {/* The track itself is not a control: the two adjustable thumbs inside
+          are. Leaving it accessible would collapse both of them into one
+          VoiceOver node. */}
       <Pressable
+        accessible={false}
         accessibilityRole="none"
         disabled={disabled}
         onLayout={handleTrackLayout}

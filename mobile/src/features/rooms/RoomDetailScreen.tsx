@@ -569,7 +569,11 @@ export function RoomDetailScreen({ route, navigation }: Props) {
           onPress={() => setOptionsVisible(false)}
           style={styles.sheetBackdrop}
         >
+          {/* A Pressable is an accessibility element by default, which would
+              collapse the whole sheet into one VoiceOver node and hide the
+              options inside it. This one only blocks backdrop taps. */}
           <Pressable
+            accessible={false}
             onPress={pressEvent => pressEvent.stopPropagation()}
             style={styles.sheet}
             accessibilityViewIsModal

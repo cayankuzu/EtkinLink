@@ -603,6 +603,8 @@ export function DirectChatScreen({ route, navigation }: Props) {
         onRequestClose={() => setMenuVisible(false)}
       >
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Sohbet seçeneklerini kapat"
           style={styles.backdrop}
           onPress={() => setMenuVisible(false)}
         >

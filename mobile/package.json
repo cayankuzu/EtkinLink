@@ -15,6 +15,8 @@
     "security:guards": "node ./scripts/check-security-guards.mjs",
     "compatibility:guards": "node ./scripts/check-device-compatibility.mjs",
     "performance:guards": "node ./scripts/check-performance-budgets.mjs",
+    "accessibility:guards": "node ./scripts/check-accessibility-guards.mjs",
+    "accessibility:guards:test": "node --test ./scripts/check-accessibility-guards.test.mjs",
     "critical-flows": "node ./scripts/check-critical-flow-evidence.mjs",
     "e2e:staging-backend": "node ./scripts/staging-critical-e2e.mjs",
     "release:check": "node ./scripts/check-release-readiness.mjs",
@@ -32,7 +34,7 @@
     "test": "jest --runInBand",
     "test:coverage": "jest --runInBand --coverage",
     "coverage:ratchet": "node ./scripts/check-coverage-ratchet.mjs",
-    "verify": "npm run typecheck && npm run lint && npm run format:check && npm run architecture && npm run deadcode && npm run security:guards && npm run compatibility:guards && npm run performance:guards && npm run critical-flows && npm run ota:classifier:test && npm run release:signer:test && npm run test",
+    "verify": "npm run typecheck && npm run lint && npm run format:check && npm run architecture && npm run deadcode && npm run security:guards && npm run compatibility:guards && npm run performance:guards && npm run accessibility:guards && npm run accessibility:guards:test && npm run critical-flows && npm run ota:classifier:test && npm run release:signer:test && npm run test",
     "build:debug": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-expo-debug.ps1",
     "doctor": "npx expo-doctor"
   },

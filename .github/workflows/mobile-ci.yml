@@ -46,6 +46,8 @@ jobs:
       - run: npm run security:guards
       - run: npm run compatibility:guards
       - run: npm run performance:guards
+      - run: npm run accessibility:guards
+      - run: npm run accessibility:guards:test
       - run: npm run critical-flows
       - run: npm run ota:classifier:test
       - run: npm run release:signer:test

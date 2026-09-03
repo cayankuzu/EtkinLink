@@ -244,10 +244,17 @@ export function SignUpPhotosScreen({ navigation }: Props) {
         onRequestClose={() => setSourceOpen(false)}
       >
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Fotoğraf kaynağı seçimini kapat"
           style={styles.modalBackdrop}
           onPress={() => setSourceOpen(false)}
         >
+          {/* A Pressable is an accessibility element by default, which would
+              collapse the whole sheet into one VoiceOver node and hide the
+              options inside it. This one only blocks backdrop taps. */}
           <Pressable
+            accessible={false}
+            accessibilityViewIsModal
             style={styles.sourceSheet}
             onPress={event => event.stopPropagation()}
           >

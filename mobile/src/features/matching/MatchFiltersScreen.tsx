@@ -125,6 +125,12 @@ export function MatchFiltersScreen({ route, navigation }: Props) {
       <Pressable
         disabled={premium}
         onPress={requirePremium}
+        // Free users only get the upgrade prompt, so the section is the
+        // control. For premium users the chips and fields inside are the
+        // controls, and grouping them would hide them from VoiceOver.
+        accessible={!premium}
+        accessibilityRole={premium ? undefined : 'button'}
+        accessibilityHint={premium ? undefined : premiumComingSoonMessage}
         style={styles.section}
       >
         <AppText variant="heading18">Gösterilecek kişiler</AppText>
@@ -154,6 +160,12 @@ export function MatchFiltersScreen({ route, navigation }: Props) {
       <Pressable
         disabled={premium}
         onPress={requirePremium}
+        // Free users only get the upgrade prompt, so the section is the
+        // control. For premium users the chips and fields inside are the
+        // controls, and grouping them would hide them from VoiceOver.
+        accessible={!premium}
+        accessibilityRole={premium ? undefined : 'button'}
+        accessibilityHint={premium ? undefined : premiumComingSoonMessage}
         style={styles.section}
       >
         <AppText variant="heading18">Yaş aralığı</AppText>
@@ -188,6 +200,12 @@ export function MatchFiltersScreen({ route, navigation }: Props) {
       <Pressable
         disabled={premium}
         onPress={requirePremium}
+        // Free users only get the upgrade prompt, so the section is the
+        // control. For premium users the chips and fields inside are the
+        // controls, and grouping them would hide them from VoiceOver.
+        accessible={!premium}
+        accessibilityRole={premium ? undefined : 'button'}
+        accessibilityHint={premium ? undefined : premiumComingSoonMessage}
         style={styles.section}
       >
         <AppText variant="heading18">İlgi alanları</AppText>
