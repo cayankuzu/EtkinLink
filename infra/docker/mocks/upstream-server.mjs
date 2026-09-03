@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 
+import { rememberBounded } from "./boundedStore.mjs";
+
 const port = Number.parseInt(process.env.MOCK_PORT ?? "8080", 10);
 const maxRequestBytes = Number.parseInt(
   process.env.MOCK_MAX_REQUEST_BYTES ?? "65536",
@@ -101,10 +103,6 @@ function stableId(prefix, idempotencyKey) {
   return `${prefix}-${digest.slice(0, 16)}`;
 }
 
-function rememberBounded(map, key, value) {
-  if (map.size >= 10_000) map.clear();
-  map.set(key, value);
-}
 
 async function handleContract(request, response, url) {
   if (request.method === "GET" && url.pathname === "/contract/events") {
