@@ -29,6 +29,15 @@ npm run test:coverage
 npm audit --omit=dev
 ```
 
+`npm run verify` ürün yüzeyi dondurma guard'ını, release evidence testlerini ve mobil zinciri (strict TypeScript, ESLint, Prettier, dependency-cruiser, knip, güvenlik/uyumluluk/performans/erişilebilirlik/hardcode guard'ları ve self-test'leri, OTA classifier, release signer testleri, Jest) çalıştırır.
+
+Veritabanı ve edge kapıları ayrı çalışır:
+
+```powershell
+npm run docker:test      # canonical Supabase stack: migration replay, lint, pgTAP, dump/restore, contract
+npm --prefix infra/cloudflare/etkinlink-edge run check
+```
+
 Supabase için tekrarlanabilir migration, lint, pgTAP ve güvenli dağıtım adımları [Supabase dağıtım belgesinde](docs/supabase-deployment.md) yer alır. Yeni migration'lar linked ortama uygulanmadan remote şema güncel kabul edilmez.
 
 Runtime'da etkinlik veya kullanıcı mock verisi bulunmaz. Etkinlik kayıtları yalnızca `https://etkinlik.io/rss/sorgu` kaynağından sunucu tarafında alınır ve kaynakta gerçek HTTPS görseli olmayan kayıtlar yayınlanmaz. Şehirler ve ilgi alanları kullanıcı üretimi olmayan sabit referans verileridir.
@@ -42,3 +51,13 @@ Runtime'da etkinlik veya kullanıcı mock verisi bulunmaz. Etkinlik kayıtları 
 - [Cihaz matrisi](docs/device-matrix.md)
 - [Gizlilik veri envanteri](docs/privacy-data-inventory.md)
 - [Google Play Data Safety eşlemesi](docs/google-play-data-safety.md)
+
+## Denetim ve kalite raporları
+
+- [Güncel boşluk matrisi](docs/audit/current-gap-matrix.md)
+- [Kalite kapıları](docs/quality-gates.md)
+- [Mimari ve KISS raporu](docs/architecture-and-kiss-report.md)
+- [Hardcode ve DRY raporu](docs/hardcode-and-dry-report.md)
+- [Ekran durum matrisi](docs/ui-ux/current-screen-state-matrix.md)
+- [Erişilebilirlik raporu](docs/ui-ux/accessibility-report.md)
+- [Docker kalite ortamı](infra/docker/README.md)

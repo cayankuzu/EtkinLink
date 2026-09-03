@@ -4,7 +4,7 @@
 
 ## 2026-08-31 güncel repo kanıtı
 
-Repo envanteri 55 forward migration ile beş pgTAP dosyasındaki toplam 251 planlı kontroldür. Docker test/CI sınırında Compose config, container contract, Toxiproxy resilience ve bounded sentetik load yerelde geçti; canonical Supabase `docker:test` profilinin tamamlanmış aynı-SHA artifact'ı ile GitHub Docker gate sonucu henüz bu kayda bağlı değildir. Bu nedenle linked staging, gerçek cihaz/provider ve signed store artifact kapılarında PASS iddiası yoktur.
+Repo envanteri 57 forward migration ile yedi pgTAP dosyasındaki toplam 283 planlı kontroldür. Canonical Supabase `docker:test` profili yerelde uçtan uca geçti: 57 migration temiz replay, `public` lint 0 bulgu, 7 dosya / 283 pgTAP, dump/restore ve Edge/Worker/upstream contract. Bu koşu `gitTreeClean=false` ile üretildiği için aynı-SHA release kanıtı değildir; GitHub `docker-validation.yml` sonucu henüz bu kayda bağlı değildir. Bu nedenle linked staging, gerçek cihaz/provider ve signed store artifact kapılarında PASS iddiası yoktur.
 
 | Alan                    | Repo durumu                                                                   | Dış kanıt                                       | Karar    |
 | ----------------------- | ----------------------------------------------------------------------------- | ----------------------------------------------- | -------- |
@@ -12,7 +12,7 @@ Repo envanteri 55 forward migration ile beş pgTAP dosyasındaki toplam 251 plan
 | Gizlilik                | Teknik envanter, iOS manifest ve Play eşlemesi hazır                          | Mağaza konsolu/hukuki metin karşılaştırması yok | Bekliyor |
 | Auth enumeration        | Client precheck kaldırıldı, eski RPC yetkisi migration ile kapatıldı          | Staging saldırı testi yok                       | Bekliyor |
 | Bağımlılıklar           | Expo/React Native hizalı, production audit allowlist guard'lı                 | CI yeniden koşmalı                              | Koşullu  |
-| RLS/IDOR/rate limit     | 55 migration, 5 pgTAP dosyası/251 plan ve canonical Docker test profili hazır | Linked staging DB kanıtı yok                    | Bekliyor |
+| RLS/IDOR/rate limit     | 57 migration, 7 pgTAP dosyası/283 plan yerel Docker profilinde geçti; owner-scoped RPC rol ACL sözleşmesi eklendi | Linked staging DB kanıtı yok                    | Bekliyor |
 | Mobil kalite            | Typecheck/lint/test/coverage/Doctor kapıları tanımlı                          | Sonuçlar quality-gates belgesinde               | Koşullu  |
 | E2E/offline             | Maestro ve gerçek staging backend senaryoları hazır                           | Workflow henüz çalışmadı                        | Bekliyor |
 | Ölçek                   | 25 → 250 → hedef, en çok 10K k6 kapısı hazır                                  | Staging 10K artifact'ı yok                      | Bekliyor |
