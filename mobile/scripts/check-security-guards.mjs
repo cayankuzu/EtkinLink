@@ -33,6 +33,7 @@ const pushReceiptTests = read(
 );
 const databaseSecurityTests = read('../supabase/tests/rls_and_security.sql');
 const aclContractTests = read('../supabase/tests/rpc_role_acl_contract.sql');
+const dockerCommon = read('../infra/docker/scripts/_common.mjs');
 const eslintConfig = read('.eslintrc.js');
 const telemetry = read('src/shared/lib/telemetry.ts');
 // A release build still ships console output to logcat/os_log, so only the
@@ -139,6 +140,21 @@ for (const source of consoleCallers) {
     `${source}: ham hata konsola yazılamaz; warnRedacted kullanılmalı.`,
   );
 }
+// The CI and Docker database gates must replay migrations, lint and pgTAP on
+// the same Supabase toolchain, otherwise one gate can pass on behaviour the
+// other never exercised.
+// Anchored to the setup-cli step: a bare `version:` would also match
+// `deno-version:` further down the workflow.
+const ciSupabaseCli = mobileCi
+  .split('supabase/setup-cli@')[1]
+  ?.match(/^\s*version:\s*(\d+\.\d+\.\d+)/mu)?.[1];
+const dockerSupabaseCli = dockerCommon.match(
+  /supabase@(\d+\.\d+\.\d+)/u,
+)?.[1];
+assert(
+  Boolean(ciSupabaseCli) && ciSupabaseCli === dockerSupabaseCli,
+  `Supabase CLI sürümü CI (${ciSupabaseCli}) ve Docker (${dockerSupabaseCli}) arasında eşleşmeli.`,
+);
 assert(
   aclContractTests.includes(
     'Service role hiçbir owner-scoped client RPCsini çalıştıramaz',

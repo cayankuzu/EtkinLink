@@ -519,7 +519,7 @@ const styles = StyleSheet.create({
     width: 230,
     height: 230,
     borderRadius: 115,
-    backgroundColor: 'rgba(91, 75, 255, 0.26)',
+    backgroundColor: colors.likeOverlay,
   },
   modalGlowBottom: {
     position: 'absolute',
@@ -528,7 +528,7 @@ const styles = StyleSheet.create({
     width: 180,
     height: 180,
     borderRadius: 90,
-    backgroundColor: 'rgba(255, 107, 94, 0.18)',
+    backgroundColor: colors.passOverlay,
   },
   modalCard: {
     width: '100%',
@@ -539,7 +539,7 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
     borderRadius: radius.xxl,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.72)',
+    borderColor: colors.glassBorderSoft,
     ...shadows.match,
   },
   matchVisual: {

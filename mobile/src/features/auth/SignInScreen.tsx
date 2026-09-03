@@ -204,7 +204,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     backgroundColor: colors.dangerSoft,
     borderWidth: 1,
-    borderColor: '#FFD5D2',
+    borderColor: colors.dangerBorder,
   },
   errorText: { flex: 1 },
   footerRow: {

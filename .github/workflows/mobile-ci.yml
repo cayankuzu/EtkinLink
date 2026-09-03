@@ -48,6 +48,8 @@ jobs:
       - run: npm run performance:guards
       - run: npm run accessibility:guards
       - run: npm run accessibility:guards:test
+      - run: npm run tokens:guards
+      - run: npm run tokens:guards:test
       - run: npm run critical-flows
       - run: npm run ota:classifier:test
       - run: npm run release:signer:test
@@ -74,7 +76,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: supabase/setup-cli@46f7f98c7f948ad727d22c1e67fab04c223a0520 # v3.0.0
         with:
-          version: 2.115.0
+          # Must match the pinned CLI in infra/docker/scripts/_common.mjs so
+          # the CI and Docker database gates replay on the same toolchain.
+          version: 2.116.0
       - name: Izole yerel Supabase veritabanini baslat
         shell: bash
         run: |

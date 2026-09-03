@@ -27,6 +27,18 @@ export const colors = {
   dangerPressed: '#C7353B',
   dangerSoft: '#FFF0F0',
   overlay: 'rgba(16, 24, 40, 0.56)',
+  overlaySubtle: 'rgba(16, 24, 40, 0.12)',
+  dangerBorder: '#FFD5D2',
+  // Full-screen photo viewers deliberately drop to a near-black canvas so the
+  // image, not the chrome, carries the surface.
+  mediaCanvas: '#050505',
+  // Controls that float directly on top of a photo.
+  glassSurface: 'rgba(255, 255, 255, 0.92)',
+  glassBorderSoft: 'rgba(255, 255, 255, 0.72)',
+  glassBorderStrong: 'rgba(255, 255, 255, 0.86)',
+  // Swipe affordances tint the card with the brand/accent hue.
+  likeOverlay: 'rgba(91, 75, 255, 0.26)',
+  passOverlay: 'rgba(255, 107, 94, 0.18)',
   transparent: 'transparent',
 } as const;
 

@@ -472,7 +472,10 @@ export function EventDetailScreen({ route, navigation }: Props) {
         presentationStyle="fullScreen"
         onRequestClose={() => setImageViewerOpen(false)}
       >
-        <StatusBar barStyle="light-content" backgroundColor="#050505" />
+        <StatusBar
+          barStyle="light-content"
+          backgroundColor={colors.mediaCanvas}
+        />
         <View style={styles.imageViewer} accessibilityViewIsModal>
           <IconButton
             icon={X}
@@ -540,18 +543,18 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     left: 0,
-    backgroundColor: 'rgba(16, 24, 40, 0.12)',
+    backgroundColor: colors.overlaySubtle,
   },
   overlayButton: {
     position: 'absolute',
     left: spacing.md,
     borderWidth: 0,
-    backgroundColor: 'rgba(255,255,255,0.92)',
+    backgroundColor: colors.glassSurface,
   },
   imageViewer: {
     flex: 1,
     justifyContent: 'center',
-    backgroundColor: '#050505',
+    backgroundColor: colors.mediaCanvas,
   },
   fullscreenImage: { width: '100%', height: '100%' },
   imageViewerClose: {
@@ -559,7 +562,7 @@ const styles = StyleSheet.create({
     right: spacing.md,
     zIndex: 2,
     borderWidth: 0,
-    backgroundColor: 'rgba(255,255,255,0.92)',
+    backgroundColor: colors.glassSurface,
   },
   contentSheet: {
     ...shadows.card,

@@ -266,7 +266,10 @@ export function ProfilePhotoGallery({
         presentationStyle="fullScreen"
         onRequestClose={() => setFullscreenIndex(null)}
       >
-        <StatusBar barStyle="light-content" backgroundColor="#050505" />
+        <StatusBar
+          barStyle="light-content"
+          backgroundColor={colors.mediaCanvas}
+        />
         <View style={styles.fullscreen}>
           <View style={[styles.fullscreenHeader, { paddingTop: insets.top }]}>
             <IconButton
@@ -372,7 +375,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(16, 24, 40, 0.56)',
+    backgroundColor: colors.overlay,
   },
   photoArrowLeft: { left: spacing.sm },
   photoArrowRight: { right: spacing.sm },
@@ -385,16 +388,16 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(16, 24, 40, 0.56)',
+    backgroundColor: colors.overlay,
   },
-  fullscreen: { flex: 1, backgroundColor: '#050505' },
+  fullscreen: { flex: 1, backgroundColor: colors.mediaCanvas },
   fullscreenHeader: {
     minHeight: 56,
     paddingHorizontal: spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#050505',
+    backgroundColor: colors.mediaCanvas,
   },
   fullscreenButton: {},
   buttonSpacer: { width: 48 },
