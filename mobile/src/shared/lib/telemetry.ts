@@ -1,5 +1,6 @@
 import * as Sentry from '@sentry/react-native';
 import { env } from '@shared/config/env';
+import { toAppError } from '@shared/lib/errors';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
@@ -95,6 +96,23 @@ export function captureAppError(
     extra: safeContext,
     tags: { error_domain: sanitizeText(domain) },
   });
+}
+
+/**
+ * The only sanctioned console writer in `src/`.
+ *
+ * A release build still forwards `console.warn` to logcat/os_log, where any
+ * other process with log access can read it. Passing a raw provider error there
+ * would leak the Expo push token, a signed Storage URL or a PostgREST row
+ * fragment, so callers may log a fixed message plus the stable `AppError` code
+ * and nothing else.
+ */
+export function warnRedacted(message: string, error?: unknown): void {
+  if (error === undefined) {
+    console.warn(sanitizeText(message));
+    return;
+  }
+  console.warn(sanitizeText(message), toAppError(error).code);
 }
 
 export function recordPerformance(

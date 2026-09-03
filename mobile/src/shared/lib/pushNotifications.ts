@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClientId } from '@shared/lib/ids';
 import { secureStorage } from '@shared/lib/secureStorage';
 import { supabase } from '@shared/lib/supabase';
-import { captureAppError } from '@shared/lib/telemetry';
+import { captureAppError, warnRedacted } from '@shared/lib/telemetry';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import * as Updates from 'expo-updates';
@@ -505,7 +505,7 @@ export function usePushRegistration(userId: string | null): void {
       } catch (error) {
         if (!cancelled) {
           captureAppError(error, { operation: 'push.registration' });
-          console.warn('Push bildirimi kaydı tamamlanamadı.', error);
+          warnRedacted('Push bildirimi kaydı tamamlanamadı.', error);
         }
       }
     };

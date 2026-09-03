@@ -18,12 +18,13 @@ jest.mock('@shared/lib/secureStorage', () => ({
 }));
 jest.mock('@shared/lib/telemetry', () => ({
   captureAppError: jest.fn(),
+  warnRedacted: jest.fn(),
 }));
 
 import { getSignedProfilePhotoUrls } from '@shared/lib/profilePhotoUrls';
 import { secureStorage } from '@shared/lib/secureStorage';
 import { supabase } from '@shared/lib/supabase';
-import { captureAppError } from '@shared/lib/telemetry';
+import { captureAppError, warnRedacted } from '@shared/lib/telemetry';
 
 import { createSupabaseBuilder } from '../../test/supabaseMock';
 import {
@@ -45,6 +46,7 @@ const mockCleanupGetItem = jest.mocked(secureStorage.getItem);
 const mockCleanupRemoveItem = jest.mocked(secureStorage.removeItem);
 const mockCleanupSetItem = jest.mocked(secureStorage.setItem);
 const mockCaptureAppError = jest.mocked(captureAppError);
+const mockWarnRedacted = jest.mocked(warnRedacted);
 
 function profileRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -270,6 +272,7 @@ describe('profileService güvenlik ve rollback davranışları', () => {
 
   it('kendi profilinde yardımcı veri ve signed URL hatasında temel profili korur', async () => {
     const warning = jest.spyOn(console, 'warn').mockImplementation();
+    mockWarnRedacted.mockClear();
     mockRpc.mockResolvedValue({ data: [profileRow()], error: null } as never);
     configureAssetTables({ photoError: { message: 'geçici hata' } });
     mockSignedUrls.mockRejectedValue(new Error('imza kapalı'));
@@ -279,7 +282,10 @@ describe('profileService güvenlik ve rollback davranışları', () => {
       photos: [],
       interests: [],
     });
-    expect(warning).toHaveBeenCalledTimes(2);
+    // A failed signing call carries the private object path, so both
+    // degradations may only be reported through the redacting helper.
+    expect(mockWarnRedacted).toHaveBeenCalledTimes(2);
+    expect(warning).not.toHaveBeenCalled();
     warning.mockRestore();
   });
 

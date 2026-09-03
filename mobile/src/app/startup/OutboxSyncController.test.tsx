@@ -12,6 +12,7 @@ jest.mock('@shared/lib/chatOutbox', () => ({
 
 jest.mock('@shared/lib/telemetry', () => ({
   captureAppError: jest.fn(),
+  warnRedacted: jest.fn(),
 }));
 
 import { sendDirectMessage } from '@features/messages/messageService';

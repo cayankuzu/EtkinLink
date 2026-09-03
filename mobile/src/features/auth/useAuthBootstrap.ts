@@ -1,5 +1,5 @@
-import { toAppError } from '@shared/lib/errors';
 import { startSupabaseAuthLifecycle, supabase } from '@shared/lib/supabase';
+import { warnRedacted } from '@shared/lib/telemetry';
 import { useEffect } from 'react';
 import { Linking } from 'react-native';
 
@@ -24,7 +24,7 @@ export function useAuthBootstrap(): void {
       if (session) void supabase.realtime.setAuth(session.access_token);
       if (session && useSessionStore.getState().phase === 'recovery') return;
       void setSession(session).catch(error => {
-        console.warn('Oturum durumu uygulanamadı.', toAppError(error).code);
+        warnRedacted('Oturum durumu uygulanamadı.', error);
       });
     }
 
@@ -37,10 +37,7 @@ export function useAuthBootstrap(): void {
           setPendingVerificationEmail(null);
         }
       } catch (error) {
-        console.warn(
-          'Kimlik doğrulama bağlantısı işlenemedi.',
-          toAppError(error).code,
-        );
+        warnRedacted('Kimlik doğrulama bağlantısı işlenemedi.', error);
       }
     }
 

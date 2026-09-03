@@ -9,6 +9,16 @@ const assert = (condition, message) => {
   if (!condition) failures.push(message);
 };
 
+function collectSourceFiles(directory) {
+  return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
+    const path = `${directory}/${entry.name}`;
+    if (entry.isDirectory()) return collectSourceFiles(path);
+    if (!/\.tsx?$/u.test(entry.name)) return [];
+    if (/\.test\.tsx?$/u.test(entry.name)) return [];
+    return [path.replace(/\\/gu, '/')];
+  });
+}
+
 const authService = read('src/features/auth/authService.ts');
 const pendingVerification = read(
   'src/features/auth/pendingVerificationService.ts',
@@ -22,6 +32,17 @@ const pushReceiptTests = read(
   '../supabase/functions/push-receipts/index.test.ts',
 );
 const databaseSecurityTests = read('../supabase/tests/rls_and_security.sql');
+const aclContractTests = read('../supabase/tests/rpc_role_acl_contract.sql');
+const eslintConfig = read('.eslintrc.js');
+const telemetry = read('src/shared/lib/telemetry.ts');
+// A release build still ships console output to logcat/os_log, so only the
+// redacting telemetry helper may write there. Anything else would leak the raw
+// Expo push token, a signed Storage URL or a PostgREST row fragment.
+const consoleCallers = collectSourceFiles(resolve(root, 'src')).filter(
+  file =>
+    !file.endsWith('src/shared/lib/telemetry.ts') &&
+    /(^|[^\w.])console\s*\./u.test(readFileSync(file, 'utf8')),
+);
 const mobileCi = read('../.github/workflows/mobile-ci.yml');
 const androidBuild = read('android/app/build.gradle');
 const androidProguard = read('android/app/proguard-rules.pro');
@@ -99,6 +120,33 @@ assert(
 assert(
   androidProguard.includes('-keep class com.etkinlink.app.BuildConfig { *; }'),
   'R8, react-native-config BuildConfig alanlarını reflection için korumalı.',
+);
+assert(
+  eslintConfig.includes("'no-console': 'error'") &&
+    /files:\s*\['src\/shared\/lib\/telemetry\.ts'\]/u.test(eslintConfig),
+  'Konsol yazımı yalnız redaksiyonlu telemetry yardımcısına açık olmalı.',
+);
+assert(
+  telemetry.includes('export function warnRedacted') &&
+    /console\.warn\(sanitizeText\(message\), toAppError\(error\)\.code\)/u.test(
+      telemetry,
+    ),
+  'warnRedacted yalnız sabit mesaj ve kararlı AppError kodunu loglamalı.',
+);
+for (const source of consoleCallers) {
+  assert(
+    false,
+    `${source}: ham hata konsola yazılamaz; warnRedacted kullanılmalı.`,
+  );
+}
+assert(
+  aclContractTests.includes(
+    'Service role hiçbir owner-scoped client RPCsini çalıştıramaz',
+  ) &&
+    aclContractTests.includes(
+      'Anon yalnız kayıt öncesi ve public katalog uçlarını çalıştırabilir',
+    ),
+  'Owner-scoped RPC rol ACL sözleşmesi pgTAP ile korunmalı.',
 );
 for (const { action, workflow } of workflowActions) {
   assert(

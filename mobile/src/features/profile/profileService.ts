@@ -7,7 +7,7 @@ import {
 } from '@shared/lib/profilePhotoValidation';
 import { secureStorage } from '@shared/lib/secureStorage';
 import { supabase } from '@shared/lib/supabase';
-import { captureAppError } from '@shared/lib/telemetry';
+import { captureAppError, warnRedacted } from '@shared/lib/telemetry';
 import type {
   Event,
   Interest,
@@ -135,7 +135,7 @@ export async function getProfile(userId?: string): Promise<Profile> {
   const ownProfile = profileId === authData.user.id;
   if (assetError && !ownProfile) throw assetError;
   if (assetError) {
-    console.warn('Profil yardımcı bilgileri yüklenemedi.', assetError.message);
+    warnRedacted('Profil yardımcı bilgileri yüklenemedi.', assetError);
   }
   const photos = photosResult.data ?? [];
   const userInterests = userInterestsResult.data ?? [];
@@ -148,7 +148,7 @@ export async function getProfile(userId?: string): Promise<Profile> {
     );
   } catch (error) {
     if (!ownProfile) throw error;
-    console.warn('Profil fotoğrafları imzalanamadı.', error);
+    warnRedacted('Profil fotoğrafları imzalanamadı.', error);
   }
   const interestIds = userInterests.map(row => row.interest_id);
   const { data: interests, error: interestsError } = interestIds.length

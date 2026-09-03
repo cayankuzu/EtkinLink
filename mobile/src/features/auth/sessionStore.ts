@@ -8,7 +8,7 @@ import {
 } from '@shared/lib/pushNotifications';
 import { queryClient } from '@shared/lib/queryClient';
 import { supabase } from '@shared/lib/supabase';
-import { captureAppError } from '@shared/lib/telemetry';
+import { captureAppError, warnRedacted } from '@shared/lib/telemetry';
 import type { Database } from '@shared/types/database';
 import type { Session } from '@supabase/supabase-js';
 import { Image as ExpoImage } from 'expo-image';
@@ -172,7 +172,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     } catch (pushError) {
       // Push cleanup is best-effort; a temporary network failure must not
       // prevent the user from closing the local session.
-      console.warn('Push bildirimi cihaz kaydı kapatılamadı.', pushError);
+      warnRedacted('Push bildirimi cihaz kaydı kapatılamadı.', pushError);
     }
     let signOutError: unknown = null;
     try {

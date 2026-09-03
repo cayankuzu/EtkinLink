@@ -3,7 +3,10 @@ module.exports = {
   extends: '@react-native',
   plugins: ['simple-import-sort'],
   rules: {
-    'no-console': ['error', { allow: ['warn', 'error'] }],
+    // Release builds still forward console output to logcat/os_log, so a raw
+    // provider error logged here leaks push tokens and signed URLs. Only the
+    // redacting telemetry helper may write to the console (override below).
+    'no-console': 'error',
     'no-void': 'off',
     'simple-import-sort/imports': 'error',
     'simple-import-sort/exports': 'error',
@@ -16,4 +19,12 @@ module.exports = {
       },
     ],
   },
+  overrides: [
+    {
+      files: ['src/shared/lib/telemetry.ts'],
+      rules: {
+        'no-console': ['error', { allow: ['warn'] }],
+      },
+    },
+  ],
 };

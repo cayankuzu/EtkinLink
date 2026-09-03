@@ -6,6 +6,7 @@ jest.mock('@shared/lib/supabase', () => ({
 
 jest.mock('@shared/lib/telemetry', () => ({
   captureAppError: jest.fn(),
+  warnRedacted: jest.fn(),
 }));
 
 jest.mock('@shared/lib/secureStorage', () => ({
@@ -26,7 +27,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClientId } from '@shared/lib/ids';
 import { secureStorage } from '@shared/lib/secureStorage';
 import { supabase } from '@shared/lib/supabase';
-import { captureAppError } from '@shared/lib/telemetry';
+import { captureAppError, warnRedacted } from '@shared/lib/telemetry';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import * as Notifications from 'expo-notifications';
 import * as Updates from 'expo-updates';
@@ -55,6 +56,7 @@ const storageSetItem = jest.mocked(secureStorage.setItem);
 const mockCreateClientId = jest.mocked(createClientId);
 const mockRpc = supabase.rpc as jest.Mock;
 const mockCaptureAppError = jest.mocked(captureAppError);
+const mockWarnRedacted = jest.mocked(warnRedacted);
 
 function storedRegistration(overrides: Record<string, unknown> = {}): string {
   return JSON.stringify({
@@ -636,10 +638,13 @@ describe('push token yaşam döngüsü', () => {
       });
     });
 
-    expect(warning).toHaveBeenCalledWith(
+    // The provider error can embed the raw Expo push token, so the failure may
+    // only reach the console through the redacting telemetry helper.
+    expect(mockWarnRedacted).toHaveBeenCalledWith(
       'Push bildirimi kaydı tamamlanamadı.',
       error,
     );
+    expect(warning).not.toHaveBeenCalled();
     await unmount();
     warning.mockRestore();
   });
