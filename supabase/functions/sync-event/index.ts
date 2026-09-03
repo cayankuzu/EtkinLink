@@ -1,4 +1,13 @@
 import { createClient } from "npm:@supabase/supabase-js@2.112.1";
+import {
+  EVENTS_API_URL,
+  fetchBoundedJson,
+  parseEtkinlikPublicEventUrl,
+} from "../ingest-events/upstreamHttp.ts";
+import {
+  BoundedJsonError,
+  readBoundedJsonRequest,
+} from "../_shared/boundedJson.ts";
 
 type JsonObject = Record<string, unknown>;
 
@@ -47,10 +56,13 @@ function cleanHtml(value: unknown): string | null {
 
 function secureUrl(value: unknown): string | null {
   const candidate = text(value);
-  if (!candidate) return null;
+  if (!candidate || candidate.length > 2_048) return null;
   try {
     const parsed = new URL(candidate);
-    return parsed.protocol === "https:" ? parsed.toString() : null;
+    return parsed.protocol === "https:" && parsed.username === "" &&
+        parsed.password === "" && parsed.hash === ""
+      ? parsed.toString()
+      : null;
   } catch {
     return null;
   }
@@ -74,27 +86,17 @@ function uniqueNames(values: Array<string | null>): string[] {
 async function fetchApiEvent(externalId: number): Promise<JsonObject> {
   const apiToken = Deno.env.get("ETKINLIK_IO_API_TOKEN");
   if (!apiToken) throw new Error("API_TOKEN_MISSING");
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12_000);
-  try {
-    const apiResponse = await fetch(
-      `https://etkinlik.io/api/v2/events/${externalId}`,
-      {
-        signal: controller.signal,
-        headers: {
-          Accept: "application/json",
-          "X-Etkinlik-Token": apiToken,
-          "User-Agent": "EtkinLink-EventSync/2.0",
-        },
+  const event = record(
+    await fetchBoundedJson(`${EVENTS_API_URL}/${externalId}`, {
+      headers: {
+        Accept: "application/json",
+        "X-Etkinlik-Token": apiToken,
+        "User-Agent": "EtkinLink-EventSync/2.0",
       },
-    );
-    if (!apiResponse.ok) throw new Error(`UPSTREAM_${apiResponse.status}`);
-    const event = record(await apiResponse.json());
-    if (!event) throw new Error("INVALID_API_RESPONSE");
-    return event;
-  } finally {
-    clearTimeout(timeout);
-  }
+    }),
+  );
+  if (!event) throw new Error("INVALID_API_RESPONSE");
+  return event;
 }
 
 Deno.serve(async (request) => {
@@ -123,16 +125,17 @@ Deno.serve(async (request) => {
   }
 
   try {
-    const body = record(await request.json()) ?? {};
-    const sourceUrl = secureUrl(body.source_url);
-    const sourceId = sourceUrl
-      ? numberValue(
-        new URL(sourceUrl).pathname.match(/^\/etkinlik\/(\d+)/)?.[1],
-      )
-      : null;
+    const body =
+      record((await readBoundedJsonRequest(request, 64 * 1024)).value) ??
+        {};
+    const sourceDetail = parseEtkinlikPublicEventUrl(body.source_url);
+    const sourceUrl = sourceDetail?.url ?? null;
+    const sourceId = sourceDetail?.eventId ?? null;
     const clientEvent = record(body.event);
     const externalId = sourceId ?? numberValue(clientEvent?.external_id);
-    if (externalId === null || externalId < 1) {
+    if (
+      externalId === null || !Number.isSafeInteger(externalId) || externalId < 1
+    ) {
       return response(400, { error: "Etkinlik.io etkinlik kimliği geçersiz." });
     }
 
@@ -160,7 +163,7 @@ Deno.serve(async (request) => {
     const startAt = validDate(
       apiEvent.start_r001 ?? apiEvent.start ?? clientEvent?.start_at,
     );
-    const source = secureUrl(apiEvent.url) ??
+    const source = parseEtkinlikPublicEventUrl(apiEvent.url)?.url ??
       sourceUrl ??
       `https://etkinlik.io/etkinlik/${externalId}`;
     const imageUrl = secureUrl(apiEvent.poster_url) ??
@@ -216,6 +219,9 @@ Deno.serve(async (request) => {
     if (error) throw new Error(`DATABASE_${error.code}`);
     return response(200, { event_id: data.id });
   } catch (error) {
+    if (error instanceof BoundedJsonError) {
+      return response(error.status, { error: error.message });
+    }
     const code = error instanceof Error
       ? error.message.slice(0, 80)
       : "UNKNOWN";

@@ -1,14 +1,21 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { createClientId } from '@shared/lib/ids';
+import { secureStorage } from '@shared/lib/secureStorage';
 import { supabase } from '@shared/lib/supabase';
 import { captureAppError } from '@shared/lib/telemetry';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
+import * as Updates from 'expo-updates';
 import { useEffect } from 'react';
 import { AppState, Platform } from 'react-native';
 
 const EXPO_PUSH_TOKEN_PATTERN =
   /^(ExponentPushToken|ExpoPushToken)\[[A-Za-z0-9_-]+\]$/;
-const PUSH_REGISTRATION_STORAGE_KEY = '@etkinlink/push-registration-v1';
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const LEGACY_PUSH_REGISTRATION_STORAGE_KEY = '@etkinlink/push-registration-v1';
+const PUSH_INSTALLATION_STORAGE_KEY = '@etkinlink/push-installation-v1';
+const PUSH_REGISTRATION_STORAGE_KEY = '@etkinlink/push-registration-v2';
 const PUSH_SYNC_COOLDOWN_MS = 60_000;
 const PUSH_RETRY_DELAYS_MS = [5_000, 15_000, 60_000, 5 * 60_000] as const;
 const ANDROID_CHANNELS = {
@@ -19,9 +26,29 @@ const ANDROID_CHANNELS = {
   system: 'system-v2',
 } as const;
 
+type PushPlatform = 'android' | 'ios';
+type PushEnvironment = 'development' | 'preview' | 'production';
+type PushRevocationReason =
+  | 'logout'
+  | 'session_loss'
+  | 'account_switch'
+  | 'permission_denied';
+type PushSyncState =
+  | 'pending_registration'
+  | 'registered'
+  | 'pending_revocation';
+
 type StoredPushRegistration = {
+  schemaVersion: 2;
+  installationId: string;
   token: string;
   userId: string;
+  platform: PushPlatform;
+  environment: PushEnvironment;
+  projectId: string;
+  syncState: PushSyncState;
+  previousTokens: string[];
+  revocationReason?: PushRevocationReason;
 };
 
 let currentExpoPushToken: string | null = null;
@@ -138,16 +165,90 @@ export function ensureNotificationPermission(): Promise<boolean> {
   return permissionPromise;
 }
 
+function getPushPlatform(): PushPlatform {
+  return Platform.OS === 'ios' ? 'ios' : 'android';
+}
+
+function getPushEnvironment(): PushEnvironment {
+  const configuredEnvironment =
+    Updates.channel ?? Constants.expoConfig?.extra?.appEnvironment;
+  if (
+    configuredEnvironment === 'development' ||
+    configuredEnvironment === 'preview' ||
+    configuredEnvironment === 'production'
+  ) {
+    return configuredEnvironment;
+  }
+  return __DEV__ ? 'development' : 'production';
+}
+
+function uniqueValidTokens(tokens: Array<string | null | undefined>): string[] {
+  return [
+    ...new Set(
+      tokens.filter(
+        (token): token is string =>
+          typeof token === 'string' && EXPO_PUSH_TOKEN_PATTERN.test(token),
+      ),
+    ),
+  ].slice(0, 2);
+}
+
+function isStoredRegistration(
+  value: Partial<StoredPushRegistration>,
+): value is StoredPushRegistration {
+  return (
+    value.schemaVersion === 2 &&
+    typeof value.installationId === 'string' &&
+    UUID_PATTERN.test(value.installationId) &&
+    typeof value.token === 'string' &&
+    EXPO_PUSH_TOKEN_PATTERN.test(value.token) &&
+    typeof value.userId === 'string' &&
+    value.userId.length > 0 &&
+    (value.platform === 'android' || value.platform === 'ios') &&
+    (value.environment === 'development' ||
+      value.environment === 'preview' ||
+      value.environment === 'production') &&
+    typeof value.projectId === 'string' &&
+    UUID_PATTERN.test(value.projectId) &&
+    (value.syncState === 'pending_registration' ||
+      value.syncState === 'registered' ||
+      value.syncState === 'pending_revocation') &&
+    Array.isArray(value.previousTokens) &&
+    value.previousTokens.length <= 2 &&
+    value.previousTokens.every(
+      token => typeof token === 'string' && EXPO_PUSH_TOKEN_PATTERN.test(token),
+    ) &&
+    (value.revocationReason === undefined ||
+      value.revocationReason === 'logout' ||
+      value.revocationReason === 'session_loss' ||
+      value.revocationReason === 'account_switch' ||
+      value.revocationReason === 'permission_denied')
+  );
+}
+
+async function purgeLegacyRegistration(): Promise<void> {
+  // v1 contained the raw Expo token and user identifier in AsyncStorage.
+  // Never read it back into memory: securely re-register from the OS token.
+  await AsyncStorage.removeItem(LEGACY_PUSH_REGISTRATION_STORAGE_KEY).catch(
+    () => undefined,
+  );
+}
+
 async function readStoredRegistration(): Promise<StoredPushRegistration | null> {
+  await purgeLegacyRegistration();
   try {
-    const value = await AsyncStorage.getItem(PUSH_REGISTRATION_STORAGE_KEY);
+    const value = await secureStorage.getItem(PUSH_REGISTRATION_STORAGE_KEY);
     if (!value) return null;
     const parsed = JSON.parse(value) as Partial<StoredPushRegistration>;
-    if (typeof parsed.token !== 'string' || typeof parsed.userId !== 'string') {
+    if (!isStoredRegistration(parsed)) {
+      await secureStorage.removeItem(PUSH_REGISTRATION_STORAGE_KEY);
       return null;
     }
-    return { token: parsed.token, userId: parsed.userId };
+    return parsed;
   } catch {
+    await secureStorage
+      .removeItem(PUSH_REGISTRATION_STORAGE_KEY)
+      .catch(() => undefined);
     return null;
   }
 }
@@ -155,14 +256,34 @@ async function readStoredRegistration(): Promise<StoredPushRegistration | null> 
 async function storeRegistration(
   registration: StoredPushRegistration,
 ): Promise<void> {
-  await AsyncStorage.setItem(
+  await secureStorage.setItem(
     PUSH_REGISTRATION_STORAGE_KEY,
     JSON.stringify(registration),
   );
 }
 
 async function removeStoredRegistration(): Promise<void> {
-  await AsyncStorage.removeItem(PUSH_REGISTRATION_STORAGE_KEY);
+  await secureStorage.removeItem(PUSH_REGISTRATION_STORAGE_KEY);
+}
+
+async function getOrCreateInstallationId(
+  preferredInstallationId?: string,
+): Promise<string> {
+  const storedInstallationId = await secureStorage.getItem(
+    PUSH_INSTALLATION_STORAGE_KEY,
+  );
+  if (storedInstallationId && UUID_PATTERN.test(storedInstallationId)) {
+    return storedInstallationId;
+  }
+  const installationId =
+    preferredInstallationId && UUID_PATTERN.test(preferredInstallationId)
+      ? preferredInstallationId
+      : createClientId();
+  if (!UUID_PATTERN.test(installationId)) {
+    throw new Error('Geçerli push kurulum kimliği üretilemedi.');
+  }
+  await secureStorage.setItem(PUSH_INSTALLATION_STORAGE_KEY, installationId);
+  return installationId;
 }
 
 function clearRetry(): void {
@@ -172,11 +293,8 @@ function clearRetry(): void {
 }
 
 function scheduleRetry(userId: string): void {
-  if (retryTimer) return;
-  const delay =
-    PUSH_RETRY_DELAYS_MS[
-      Math.min(retryAttempt, PUSH_RETRY_DELAYS_MS.length - 1)
-    ];
+  if (retryTimer || retryAttempt >= PUSH_RETRY_DELAYS_MS.length) return;
+  const delay = PUSH_RETRY_DELAYS_MS[retryAttempt];
   retryAttempt += 1;
   retryTimer = setTimeout(() => {
     retryTimer = null;
@@ -186,30 +304,51 @@ function scheduleRetry(userId: string): void {
   }, delay);
 }
 
-async function unregisterToken(token: string): Promise<void> {
-  const { error } = await supabase.rpc('unregister_push_token', {
-    expo_token: token,
+async function revokeRegistration(
+  registration: StoredPushRegistration,
+  reason: PushRevocationReason,
+): Promise<void> {
+  const { error } = await supabase.rpc('revoke_push_installation', {
+    client_installation_id: registration.installationId,
+    app_environment: registration.environment,
+    expo_token: registration.token,
+    revocation_reason: reason,
   });
   if (error) throw error;
 }
 
-async function deactivateRegistration(userId: string): Promise<void> {
-  const stored = await readStoredRegistration();
-  const token =
-    currentPushUserId === userId
-      ? currentExpoPushToken
-      : stored?.userId === userId
-      ? stored.token
-      : null;
-  if (!token) return;
+async function tombstoneRegistration(
+  registration: StoredPushRegistration,
+  reason: PushRevocationReason,
+): Promise<StoredPushRegistration> {
+  const tombstone: StoredPushRegistration = {
+    ...registration,
+    syncState: 'pending_revocation',
+    revocationReason: reason,
+  };
+  await storeRegistration(tombstone);
+  return tombstone;
+}
 
-  await unregisterToken(token);
-  if (stored?.userId === userId && stored.token === token) {
-    await removeStoredRegistration();
-  }
+function clearRegistrationMemory(): void {
+  clearRetry();
   currentExpoPushToken = null;
   currentPushUserId = null;
+  registrationPromiseUserId = null;
   lastPushSyncAt = 0;
+}
+
+async function deactivateRegistration(
+  userId: string,
+  reason: PushRevocationReason,
+): Promise<void> {
+  const stored = await readStoredRegistration();
+  if (!stored || stored.userId !== userId) return;
+
+  const tombstone = await tombstoneRegistration(stored, reason);
+  clearRegistrationMemory();
+  await revokeRegistration(tombstone, reason);
+  await removeStoredRegistration();
 }
 
 async function registerPushToken(userId: string): Promise<string | null> {
@@ -218,7 +357,7 @@ async function registerPushToken(userId: string): Promise<string | null> {
     await Notifications.getPermissionsAsync(),
   );
   if (!permissionGranted) {
-    await deactivateRegistration(userId);
+    await deactivateRegistration(userId, 'permission_denied');
     return null;
   }
 
@@ -230,6 +369,11 @@ async function registerPushToken(userId: string): Promise<string | null> {
   }
 
   const stored = await readStoredRegistration();
+  const installationId = await getOrCreateInstallationId(
+    stored?.installationId,
+  );
+  const platform = getPushPlatform();
+  const environment = getPushEnvironment();
   const previousToken =
     currentPushUserId === userId
       ? currentExpoPushToken
@@ -243,18 +387,42 @@ async function registerPushToken(userId: string): Promise<string | null> {
     return expoToken;
   }
 
-  const { error } = await supabase.rpc('register_push_token', {
+  const previousTokens = uniqueValidTokens([
+    ...(stored?.previousTokens ?? []),
+    previousToken !== expoToken ? previousToken : null,
+    stored?.token !== expoToken ? stored?.token : null,
+  ]);
+  const pendingRegistration: StoredPushRegistration = {
+    schemaVersion: 2,
+    installationId,
+    token: expoToken,
+    userId,
+    platform,
+    environment,
+    projectId,
+    syncState: 'pending_registration',
+    previousTokens,
+  };
+
+  // Persist the recovery record before the server can activate the token.
+  // A crash or lost response can therefore be reconciled on the next start.
+  await storeRegistration(pendingRegistration);
+  const { error } = await supabase.rpc('sync_push_installation', {
     expo_token: expoToken,
-    token_platform: Platform.OS === 'ios' ? 'ios' : 'android',
+    token_platform: platform,
     project_id: projectId,
+    client_installation_id: installationId,
+    app_environment: environment,
     app_version: Constants.expoConfig?.version ?? null,
+    previous_expo_tokens: previousTokens,
   });
   if (error) throw error;
 
-  if (previousToken && previousToken !== expoToken) {
-    await unregisterToken(previousToken).catch(() => undefined);
-  }
-  await storeRegistration({ token: expoToken, userId });
+  await storeRegistration({
+    ...pendingRegistration,
+    syncState: 'registered',
+    previousTokens: [],
+  });
   currentExpoPushToken = expoToken;
   currentPushUserId = userId;
   lastPushSyncAt = Date.now();
@@ -294,17 +462,26 @@ export async function enablePushNotifications(
   return Boolean(await registerForPushNotifications(userId));
 }
 
+export async function tombstoneCurrentPushRegistration(
+  reason: Extract<PushRevocationReason, 'session_loss' | 'account_switch'>,
+): Promise<void> {
+  await registrationPromise?.catch(() => undefined);
+  const stored = await readStoredRegistration();
+  if (stored) await tombstoneRegistration(stored, reason);
+  clearRegistrationMemory();
+}
+
 export async function unregisterCurrentPushToken(): Promise<void> {
   await registrationPromise?.catch(() => undefined);
   const stored = await readStoredRegistration();
-  const token = currentExpoPushToken ?? stored?.token ?? null;
-  if (token) await unregisterToken(token);
+  if (!stored) {
+    clearRegistrationMemory();
+    return;
+  }
+  const tombstone = await tombstoneRegistration(stored, 'logout');
+  clearRegistrationMemory();
+  await revokeRegistration(tombstone, 'logout');
   await removeStoredRegistration();
-  clearRetry();
-  currentExpoPushToken = null;
-  currentPushUserId = null;
-  registrationPromiseUserId = null;
-  lastPushSyncAt = 0;
 }
 
 export function usePushRegistration(userId: string | null): void {
@@ -314,9 +491,14 @@ export function usePushRegistration(userId: string | null): void {
 
     const register = async () => {
       try {
-        const permissionGranted = await ensureNotificationPermission();
+        // Lifecycle events may refresh an already-authorized token, but must
+        // never surface the OS permission dialog. Permission requests belong
+        // exclusively to the existing user-initiated Settings action.
+        const permissionGranted = allowsNotifications(
+          await Notifications.getPermissionsAsync(),
+        );
         if (!permissionGranted) {
-          await deactivateRegistration(userId);
+          await deactivateRegistration(userId, 'permission_denied');
           return;
         }
         await registerForPushNotifications(userId);

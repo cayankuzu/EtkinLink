@@ -8,6 +8,13 @@ Her koşu için commit SHA, UTC zamanı, ortam adı, workflow run URL'si ve arti
 
 `gh workflow run --ref` bir branch veya tag ister; ham commit SHA güvenilir bir dispatch ref'i değildir. Manuel workflow'lar için tam hedef SHA'ya çözümlenen korumalı release tag'ini kullanın ve koşunun `head_sha` alanını hedef SHA ile karşılaştırın. `mobile-ci.yml` manuel dispatch desteklemez; hedef commit'in korumalı `main` push koşusunu seçin.
 
+## 2026-08-31 güncel yerel doğrulama kaydı
+
+- Repo envanteri: **55** forward migration ve beş pgTAP dosyasında sırasıyla `36 + 54 + 61 + 50 + 50 = 251` planlı kontrol.
+- `npm run docker:config`, container contract paketi, `npm run docker:resilience` ve `npm run docker:load -- --vus 10 --duration 10s` yerel test/CI sınırında başarılı oldu. Yük koşusu yalnız sentetik mock hedefini kullandı.
+- Yeni `docker-validation.yml`; Compose doğrulama, tekrar üretilebilir image build'i, Hadolint, HIGH/CRITICAL vulnerability kapısı, CycloneDX SBOM, provenance, canonical Supabase test profili, fault injection, bounded load, artifact checksum ve orphan cleanup işlerini fail-closed tanımlar.
+- Bu kayıt linked staging migration/lint/pgTAP, tam aynı-SHA GitHub workflow sonucu, hosted provider, fiziksel cihaz, APNs/FCM, signed artifact veya mağaza kanıtı değildir. Tam `docker:test` ve aynı-SHA CI artifact'ı ayrıca başarıyla tamamlanıp bağlanmadan bu bölüm onlar için PASS sayılmaz; release kararı **NO-GO** kalır.
+
 ## 1. Staging migration, lint ve pgTAP
 
 - Prerequisite: Production'dan ayrı Supabase staging projesi; Supabase CLI oturumu; `staging-security` GitHub environment'inda `STAGING_DATABASE_URL` ve `STAGING_PROJECT_REF`. Ref production ref'i olmamalıdır.
@@ -22,9 +29,9 @@ Her koşu için commit SHA, UTC zamanı, ortam adı, workflow run URL'si ve arti
   gh run watch <same-sha-run-id> --exit-status
   ```
 
-- Expected result: Migration history eşitlenir; `db lint --fail-on warning` temizdir; pgTAP `1..34` ve 34 adet `ok` üretir.
+- Expected result: Migration history eşitlenir; `db lint --fail-on warning` temizdir; beş pgTAP dosyası sırasıyla `1..36`, `1..54`, `1..61`, `1..50` ve `1..50` planlarını, toplam 251 adet `ok` ile üretir.
 - Artifact: GitHub Actions `staging-database-security-evidence/db-lint.txt` ve `staging-database-security-evidence/pgtap.txt`.
-- PASS: Workflow `database-security` başarılı, lint warning/error yok, pgTAP'te `not ok` yok ve plan 34.
+- PASS: Workflow `database-security` başarılı, lint warning/error yok, pgTAP'te `not ok` yok; beş dosyanın planları eksiksiz ve toplam kontrol sayısı 251.
 - FAIL: Migration drift/push hatası, staging kimliği guard hatası, lint warning, eksik test veya herhangi bir `not ok`.
 
 ## 2. Staging Edge Function ve push zinciri
@@ -60,7 +67,7 @@ Her koşu için commit SHA, UTC zamanı, ortam adı, workflow run URL'si ve arti
 - Command:
 
   ```powershell
-  gh workflow run mobile-e2e.yml --ref <protected-tag-at-commit-sha>
+  gh workflow run mobile-e2e.yml --ref <protected-tag-at-commit-sha> -f target_sha=<full-commit-sha>
   gh run watch --exit-status
   gh run download <run-id> -n android-maestro-evidence -D artifacts/e2e/android
   gh run download <run-id> -n staging-critical-backend-e2e-evidence -D artifacts/e2e/backend
@@ -78,7 +85,7 @@ Her koşu için commit SHA, UTC zamanı, ortam adı, workflow run URL'si ve arti
 
   ```powershell
   gh workflow run staging-load-test.yml --ref <protected-tag-at-commit-sha> `
-    -f confirmation=staging-10k -f target_vus=10000
+    -f target_sha=<full-commit-sha> -f confirmation=staging-10k -f target_vus=10000
   gh run watch --exit-status
   gh run download <run-id> -n staging-mixed-load-evidence-10000vu `
     -D artifacts/load/10000vu
@@ -119,7 +126,7 @@ Her koşu için commit SHA, UTC zamanı, ortam adı, workflow run URL'si ve arti
 - Command:
 
   ```powershell
-  gh workflow run mobile-release.yml --ref <protected-tag-at-commit-sha>
+  gh workflow run mobile-release.yml --ref <protected-tag-at-commit-sha> -f target_sha=<full-commit-sha>
   gh run watch --exit-status
   gh run download <run-id> -n release-prerequisite-evidence -D artifacts/release/prerequisites
   gh run download <run-id> -n etkinlink-production-aab -D artifacts/release/android

@@ -1,0 +1,118 @@
+name: ${COMPOSE_PROJECT_NAME:-etkinlink-docker-test}
+
+x-runtime-security: &runtime-security
+  read_only: true
+  init: true
+  restart: "no"
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,nodev,size=64m
+  pids_limit: 128
+  mem_limit: 384m
+  cpus: 0.75
+  networks:
+    - test-internal
+
+x-tooling-build: &tooling-build
+  context: ../..
+  dockerfile: infra/docker/Dockerfile.tooling
+  target: tooling
+
+services:
+  upstream-mock:
+    <<: *runtime-security
+    profiles: [test, rss-mock, resilience, load]
+    image: etkinlink/docker-tooling:${ETKINLINK_DOCKER_IMAGE_TAG:-local}
+    build: *tooling-build
+    command: ["node", "infra/docker/mocks/upstream-server.mjs"]
+    environment:
+      MOCK_PORT: "8080"
+      MOCK_MAX_REQUEST_BYTES: "65536"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8080/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 3s
+      timeout: 2s
+      start_period: 3s
+      retries: 20
+
+  contract-tests:
+    <<: *runtime-security
+    profiles: [test]
+    image: etkinlink/docker-tooling:${ETKINLINK_DOCKER_IMAGE_TAG:-local}
+    command: ["node", "infra/docker/scripts/container-contract-suite.mjs"]
+    environment:
+      MOCK_BASE_URL: http://upstream-mock:8080
+      NODE_OPTIONS: --max-old-space-size=1024
+    mem_limit: 1536m
+    cpus: 2.0
+    pids_limit: 256
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=128m
+      - /workspace/infra/cloudflare/etkinlink-edge/node_modules/.vite-temp:rw,noexec,nosuid,nodev,size=32m,uid=1000,gid=1000
+      - /workspace/infra/cloudflare/etkinlink-edge/.wrangler:rw,noexec,nosuid,nodev,size=32m,uid=1000,gid=1000
+      - /workspace/infra/cloudflare/etkinlink-edge/dist:rw,noexec,nosuid,nodev,size=64m,uid=1000,gid=1000
+    depends_on:
+      upstream-mock:
+        condition: service_healthy
+
+  toxiproxy:
+    <<: *runtime-security
+    profiles: [resilience]
+    image: ghcr.io/shopify/toxiproxy:2.12.0@sha256:9378ed52a28bc50edc1350f936f518f31fa95f0d15917d6eb40b8e376d1a214e
+    user: "65532:65532"
+    healthcheck:
+      test: ["CMD", "/toxiproxy-cli", "list"]
+      interval: 3s
+      timeout: 2s
+      start_period: 3s
+      retries: 20
+
+  resilience-tests:
+    <<: *runtime-security
+    profiles: [resilience]
+    image: etkinlink/docker-tooling:${ETKINLINK_DOCKER_IMAGE_TAG:-local}
+    command: ["node", "infra/docker/scripts/container-resilience-suite.mjs"]
+    environment:
+      MOCK_BASE_URL: http://upstream-mock:8080
+      TOXIPROXY_API_URL: http://toxiproxy:8474
+      TOXIPROXY_PROXY_URL: http://toxiproxy:8666
+    depends_on:
+      upstream-mock:
+        condition: service_healthy
+      toxiproxy:
+        condition: service_healthy
+
+  k6:
+    <<: *runtime-security
+    profiles: [load]
+    image: etkinlink/k6-runner:${ETKINLINK_DOCKER_IMAGE_TAG:-local}
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.tooling
+      target: k6-runner
+    user: "12345:12345"
+    environment:
+      TARGET_ENV: docker-test
+      CONTRACT_BASE_URL: http://upstream-mock:8080
+      K6_VUS: ${K6_VUS:-10}
+      K6_DURATION: ${K6_DURATION:-20s}
+    command: ["run", "/scripts/docker-local.k6.js"]
+    depends_on:
+      upstream-mock:
+        condition: service_healthy
+
+networks:
+  test-internal:
+    name: ${COMPOSE_PROJECT_NAME:-etkinlink-docker-test}-internal
+    internal: true
+    labels:
+      com.etkinlink.scope: docker-test

@@ -2,7 +2,10 @@ import { clearEventFeedSnapshot } from '@features/events/eventFeedSnapshot';
 import { clearEventFeedCache } from '@features/events/eventService';
 import { releaseProfilePhotoCleanupMemory } from '@features/profile/profileService';
 import { purgeAllOutbox, purgeOutboxForOwner } from '@shared/lib/chatOutbox';
-import { unregisterCurrentPushToken } from '@shared/lib/pushNotifications';
+import {
+  tombstoneCurrentPushRegistration,
+  unregisterCurrentPushToken,
+} from '@shared/lib/pushNotifications';
 import { queryClient } from '@shared/lib/queryClient';
 import { supabase } from '@shared/lib/supabase';
 import type { Session } from '@supabase/supabase-js';
@@ -30,6 +33,7 @@ jest.mock('@shared/lib/chatOutbox', () => ({
 }));
 
 jest.mock('@shared/lib/pushNotifications', () => ({
+  tombstoneCurrentPushRegistration: jest.fn(),
   unregisterCurrentPushToken: jest.fn(),
 }));
 
@@ -64,6 +68,7 @@ const releasePhotoCleanupMemory = jest.mocked(releaseProfilePhotoCleanupMemory);
 const purgeAll = jest.mocked(purgeAllOutbox);
 const purgeOwner = jest.mocked(purgeOutboxForOwner);
 const unregisterPush = jest.mocked(unregisterCurrentPushToken);
+const tombstonePush = jest.mocked(tombstoneCurrentPushRegistration);
 const clearImageMemoryCache = jest.mocked(ExpoImage.clearMemoryCache);
 
 const session = {
@@ -80,6 +85,7 @@ describe('session routing and privacy cleanup', () => {
     authSignOut.mockResolvedValue({ error: null });
     removeAllChannels.mockResolvedValue([]);
     unregisterPush.mockResolvedValue();
+    tombstonePush.mockResolvedValue();
     clearImageMemoryCache.mockResolvedValue(true);
     clearSnapshot.mockResolvedValue();
     purgeAll.mockResolvedValue();
@@ -138,6 +144,7 @@ describe('session routing and privacy cleanup', () => {
     expect(removeAllChannels).toHaveBeenCalledTimes(1);
     expect(clearImageMemoryCache).toHaveBeenCalledTimes(1);
     expect(releasePhotoCleanupMemory).toHaveBeenCalledWith(null);
+    expect(tombstonePush).toHaveBeenCalledWith('session_loss');
   });
 
   it('uses owner-scoped outbox cleanup for a known lost session', async () => {
@@ -150,6 +157,21 @@ describe('session routing and privacy cleanup', () => {
     expect(removeAllChannels).toHaveBeenCalledTimes(1);
     expect(clearImageMemoryCache).toHaveBeenCalledTimes(1);
     expect(releasePhotoCleanupMemory).toHaveBeenCalledWith('user-id');
+    expect(tombstonePush).toHaveBeenCalledWith('session_loss');
+  });
+
+  it('tombstones the prior push binding before an account switch', async () => {
+    useSessionStore.setState({ phase: 'signedIn', session });
+    const nextSession = {
+      ...session,
+      user: { ...session.user, id: 'next-user-id' },
+    } as Session;
+    rpc.mockResolvedValueOnce({ data: [], error: null } as never);
+
+    await useSessionStore.getState().setSession(nextSession);
+
+    expect(tombstonePush).toHaveBeenCalledWith('account_switch');
+    expect(useSessionStore.getState().session?.user.id).toBe('next-user-id');
   });
 
   it('continues local sign-out when private image memory cleanup fails', async () => {

@@ -8,16 +8,34 @@ jest.mock('@shared/lib/telemetry', () => ({
   captureAppError: jest.fn(),
 }));
 
+jest.mock('@shared/lib/secureStorage', () => ({
+  secureStorage: {
+    getItem: jest.fn(async () => null),
+    setItem: jest.fn(async () => undefined),
+    removeItem: jest.fn(async () => undefined),
+  },
+}));
+
+jest.mock('@shared/lib/ids', () => ({
+  createClientId: jest.fn(() => '10000000-0000-4000-8000-000000000001'),
+}));
+
+jest.mock('expo-updates', () => ({ channel: 'development' }));
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { createClientId } from '@shared/lib/ids';
+import { secureStorage } from '@shared/lib/secureStorage';
 import { supabase } from '@shared/lib/supabase';
 import { captureAppError } from '@shared/lib/telemetry';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import * as Notifications from 'expo-notifications';
+import * as Updates from 'expo-updates';
 import { AppState, Platform } from 'react-native';
 
 import {
   enablePushNotifications,
   ensureNotificationPermission,
+  tombstoneCurrentPushRegistration,
   unregisterCurrentPushToken,
   usePushRegistration,
 } from './pushNotifications';
@@ -30,11 +48,28 @@ const setNotificationChannelAsync = jest.mocked(
   Notifications.setNotificationChannelAsync,
 );
 const getExpoPushTokenAsync = jest.mocked(Notifications.getExpoPushTokenAsync);
-const storageGetItem = jest.mocked(AsyncStorage.getItem);
-const storageRemoveItem = jest.mocked(AsyncStorage.removeItem);
-const storageSetItem = jest.mocked(AsyncStorage.setItem);
+const legacyStorageRemoveItem = jest.mocked(AsyncStorage.removeItem);
+const storageGetItem = jest.mocked(secureStorage.getItem);
+const storageRemoveItem = jest.mocked(secureStorage.removeItem);
+const storageSetItem = jest.mocked(secureStorage.setItem);
+const mockCreateClientId = jest.mocked(createClientId);
 const mockRpc = supabase.rpc as jest.Mock;
 const mockCaptureAppError = jest.mocked(captureAppError);
+
+function storedRegistration(overrides: Record<string, unknown> = {}): string {
+  return JSON.stringify({
+    schemaVersion: 2,
+    installationId: '10000000-0000-4000-8000-000000000001',
+    token: 'ExponentPushToken[stored-token]',
+    userId: 'user-1',
+    platform: 'android',
+    environment: 'development',
+    projectId: 'a47f42fd-67ac-4f93-b6cd-8014abaa3e70',
+    syncState: 'registered',
+    previousTokens: [],
+    ...overrides,
+  });
+}
 
 describe('bildirim izni başlangıç akışı', () => {
   beforeAll(() => {
@@ -175,24 +210,57 @@ describe('push token yaşam döngüsü', () => {
     expect(storageSetItem).not.toHaveBeenCalled();
   });
 
-  it('fiziksel cihaz tokenını proje, platform ve sürüm bağlamıyla kaydeder', async () => {
+  it('fiziksel cihaz tokenını güvenli kurulum, ortam, platform ve sürüm bağıyla kaydeder', async () => {
     await expect(enablePushNotifications('user-1')).resolves.toBe(true);
 
     expect(getExpoPushTokenAsync).toHaveBeenCalledWith({
       projectId: 'a47f42fd-67ac-4f93-b6cd-8014abaa3e70',
     });
-    expect(mockRpc).toHaveBeenCalledWith('register_push_token', {
+    expect(mockRpc).toHaveBeenCalledWith('sync_push_installation', {
       expo_token: 'ExpoPushToken[token-one]',
       token_platform: 'android',
       project_id: 'a47f42fd-67ac-4f93-b6cd-8014abaa3e70',
+      client_installation_id: '10000000-0000-4000-8000-000000000001',
+      app_environment: 'development',
       app_version: '1.0.0',
+      previous_expo_tokens: [],
     });
+    expect(mockCreateClientId).toHaveBeenCalledTimes(1);
     expect(storageSetItem).toHaveBeenCalledWith(
-      '@etkinlink/push-registration-v1',
+      '@etkinlink/push-installation-v1',
+      '10000000-0000-4000-8000-000000000001',
+    );
+    expect(storageSetItem).toHaveBeenLastCalledWith(
+      '@etkinlink/push-registration-v2',
       JSON.stringify({
+        schemaVersion: 2,
+        installationId: '10000000-0000-4000-8000-000000000001',
         token: 'ExpoPushToken[token-one]',
         userId: 'user-1',
+        platform: 'android',
+        environment: 'development',
+        projectId: 'a47f42fd-67ac-4f93-b6cd-8014abaa3e70',
+        syncState: 'registered',
+        previousTokens: [],
       }),
+    );
+    expect(legacyStorageRemoveItem).toHaveBeenCalledWith(
+      '@etkinlink/push-registration-v1',
+    );
+    expect(AsyncStorage.setItem).not.toHaveBeenCalled();
+  });
+
+  it('EAS preview profilini production token havuzundan ayırır', async () => {
+    const channel = jest.replaceProperty(Updates, 'channel', 'preview');
+    try {
+      await enablePushNotifications('user-1');
+    } finally {
+      channel.restore();
+    }
+
+    expect(mockRpc).toHaveBeenCalledWith(
+      'sync_push_installation',
+      expect.objectContaining({ app_environment: 'preview' }),
     );
   });
 
@@ -206,7 +274,7 @@ describe('push token yaşam döngüsü', () => {
     expect([first, second]).toEqual([true, true]);
     expect(getExpoPushTokenAsync).toHaveBeenCalledTimes(2);
     expect(
-      mockRpc.mock.calls.filter(call => call[0] === 'register_push_token'),
+      mockRpc.mock.calls.filter(call => call[0] === 'sync_push_installation'),
     ).toHaveLength(1);
   });
 
@@ -226,17 +294,19 @@ describe('push token yaşam döngüsü', () => {
 
     expect(mockRpc.mock.calls).toEqual([
       [
-        'register_push_token',
+        'sync_push_installation',
         expect.objectContaining({ expo_token: 'ExpoPushToken[token-one]' }),
       ],
       [
-        'register_push_token',
-        expect.objectContaining({ expo_token: 'ExpoPushToken[token-two]' }),
+        'sync_push_installation',
+        expect.objectContaining({
+          expo_token: 'ExpoPushToken[token-two]',
+          previous_expo_tokens: ['ExpoPushToken[token-one]'],
+        }),
       ],
-      ['unregister_push_token', { expo_token: 'ExpoPushToken[token-one]' }],
     ]);
     expect(storageSetItem).toHaveBeenLastCalledWith(
-      '@etkinlink/push-registration-v1',
+      '@etkinlink/push-registration-v2',
       expect.stringContaining('ExpoPushToken[token-two]'),
     );
   });
@@ -257,14 +327,21 @@ describe('push token yaşam döngüsü', () => {
     expect(jest.getTimerCount()).toBe(1);
   });
 
-  it('sunucu kayıt hatasında yerel kaydı başarılı gibi güncellemez', async () => {
+  it('sunucu kayıt hatasında yalnız güvenli kurtarma kaydı bırakır', async () => {
     jest.useFakeTimers();
     const error = new Error('registration denied');
     mockRpc.mockResolvedValueOnce({ data: null, error });
 
     await expect(enablePushNotifications('user-1')).rejects.toBe(error);
 
-    expect(storageSetItem).not.toHaveBeenCalled();
+    expect(storageSetItem).toHaveBeenCalledWith(
+      '@etkinlink/push-registration-v2',
+      expect.stringContaining('"syncState":"pending_registration"'),
+    );
+    expect(storageSetItem).not.toHaveBeenCalledWith(
+      '@etkinlink/push-registration-v2',
+      expect.stringContaining('"syncState":"registered"'),
+    );
     expect(jest.getTimerCount()).toBe(1);
   });
 
@@ -282,16 +359,15 @@ describe('push token yaşam döngüsü', () => {
       operation: 'push.registration.retry',
     });
     expect(
-      mockRpc.mock.calls.filter(call => call[0] === 'register_push_token'),
+      mockRpc.mock.calls.filter(call => call[0] === 'sync_push_installation'),
     ).toHaveLength(2);
   });
 
   it('izin iptal edildiğinde saklanan kullanıcı tokenını pasifleştirir', async () => {
-    storageGetItem.mockResolvedValue(
-      JSON.stringify({
-        token: 'ExponentPushToken[stored-token]',
-        userId: 'user-1',
-      }),
+    storageGetItem.mockImplementation(async key =>
+      key === '@etkinlink/push-registration-v2'
+        ? storedRegistration()
+        : '10000000-0000-4000-8000-000000000001',
     );
     getPermissionsAsync.mockResolvedValue({
       status: 'denied',
@@ -303,32 +379,37 @@ describe('push token yaşam döngüsü', () => {
     const { unmount } = await renderHook(() => usePushRegistration('user-1'));
 
     await waitFor(() => {
-      expect(mockRpc).toHaveBeenCalledWith('unregister_push_token', {
+      expect(mockRpc).toHaveBeenCalledWith('revoke_push_installation', {
+        client_installation_id: '10000000-0000-4000-8000-000000000001',
+        app_environment: 'development',
         expo_token: 'ExponentPushToken[stored-token]',
+        revocation_reason: 'permission_denied',
       });
     });
     expect(storageRemoveItem).toHaveBeenCalledWith(
-      '@etkinlink/push-registration-v1',
+      '@etkinlink/push-registration-v2',
     );
 
     await unmount();
   });
 
   it('bellekte token olmasa da saklanan tokenı sunucudan ve cihazdan siler', async () => {
-    storageGetItem.mockResolvedValue(
-      JSON.stringify({
-        token: 'ExponentPushToken[stored-token]',
-        userId: 'user-1',
-      }),
+    storageGetItem.mockImplementation(async key =>
+      key === '@etkinlink/push-registration-v2'
+        ? storedRegistration()
+        : '10000000-0000-4000-8000-000000000001',
     );
 
     await unregisterCurrentPushToken();
 
-    expect(mockRpc).toHaveBeenCalledWith('unregister_push_token', {
+    expect(mockRpc).toHaveBeenCalledWith('revoke_push_installation', {
+      client_installation_id: '10000000-0000-4000-8000-000000000001',
+      app_environment: 'development',
       expo_token: 'ExponentPushToken[stored-token]',
+      revocation_reason: 'logout',
     });
     expect(storageRemoveItem).toHaveBeenCalledWith(
-      '@etkinlink/push-registration-v1',
+      '@etkinlink/push-registration-v2',
     );
   });
 
@@ -339,8 +420,101 @@ describe('push token yaşam döngüsü', () => {
 
     expect(mockRpc).not.toHaveBeenCalled();
     expect(storageRemoveItem).toHaveBeenCalledWith(
-      '@etkinlink/push-registration-v1',
+      '@etkinlink/push-registration-v2',
     );
+  });
+
+  it('çevrimdışı logout sırasında şifreli tombstone kaydını korur', async () => {
+    const error = new Error('offline');
+    storageGetItem.mockImplementation(async key =>
+      key === '@etkinlink/push-registration-v2'
+        ? storedRegistration()
+        : '10000000-0000-4000-8000-000000000001',
+    );
+    mockRpc.mockResolvedValueOnce({ data: null, error });
+
+    await expect(unregisterCurrentPushToken()).rejects.toBe(error);
+
+    expect(storageSetItem).toHaveBeenCalledWith(
+      '@etkinlink/push-registration-v2',
+      expect.stringContaining('"syncState":"pending_revocation"'),
+    );
+    expect(storageSetItem).toHaveBeenCalledWith(
+      '@etkinlink/push-registration-v2',
+      expect.stringContaining('"revocationReason":"logout"'),
+    );
+    expect(storageRemoveItem).not.toHaveBeenCalledWith(
+      '@etkinlink/push-registration-v2',
+    );
+  });
+
+  it('session kaybını ağ çağrısı yapmadan güvenli tombstone olarak işaretler', async () => {
+    storageGetItem.mockImplementation(async key =>
+      key === '@etkinlink/push-registration-v2'
+        ? storedRegistration()
+        : '10000000-0000-4000-8000-000000000001',
+    );
+
+    await tombstoneCurrentPushRegistration('session_loss');
+
+    expect(mockRpc).not.toHaveBeenCalled();
+    expect(storageSetItem).toHaveBeenCalledWith(
+      '@etkinlink/push-registration-v2',
+      expect.stringContaining('"revocationReason":"session_loss"'),
+    );
+  });
+
+  it('hesap değişiminde önceki güvenli token bağını atomik sync isteğine taşır', async () => {
+    storageGetItem.mockImplementation(async key =>
+      key === '@etkinlink/push-registration-v2'
+        ? storedRegistration({ userId: 'old-user' })
+        : '10000000-0000-4000-8000-000000000001',
+    );
+
+    await enablePushNotifications('new-user');
+
+    expect(mockRpc).toHaveBeenCalledWith(
+      'sync_push_installation',
+      expect.objectContaining({
+        client_installation_id: '10000000-0000-4000-8000-000000000001',
+        previous_expo_tokens: ['ExponentPushToken[stored-token]'],
+      }),
+    );
+    expect(storageSetItem).toHaveBeenLastCalledWith(
+      '@etkinlink/push-registration-v2',
+      expect.stringContaining('"userId":"new-user"'),
+    );
+  });
+
+  it('reinstall sonrası güvenli kurulum kaydı yoksa yeni installation ID üretir', async () => {
+    mockCreateClientId.mockReturnValueOnce(
+      '20000000-0000-4000-8000-000000000002',
+    );
+
+    await enablePushNotifications('user-1');
+
+    expect(mockRpc).toHaveBeenCalledWith(
+      'sync_push_installation',
+      expect.objectContaining({
+        client_installation_id: '20000000-0000-4000-8000-000000000002',
+      }),
+    );
+  });
+
+  it('çevrimdışı otomatik tekrarları dört gecikmeli denemeyle sınırlar', async () => {
+    jest.useFakeTimers();
+    const error = new Error('offline');
+    mockRpc.mockResolvedValue({ data: null, error });
+
+    await expect(enablePushNotifications('user-1')).rejects.toBe(error);
+    await act(async () => {
+      await jest.runAllTimersAsync();
+    });
+
+    expect(
+      mockRpc.mock.calls.filter(call => call[0] === 'sync_push_installation'),
+    ).toHaveLength(5);
+    expect(jest.getTimerCount()).toBe(0);
   });
 
   it('aktif uygulama ve token olaylarında yeniden eşitler, unmount sırasında tüm listenerları temizler', async () => {
@@ -385,13 +559,13 @@ describe('push token yaşam döngüsü', () => {
     await act(() => tokenListener?.());
     await waitFor(() => {
       expect(
-        mockRpc.mock.calls.filter(call => call[0] === 'register_push_token'),
+        mockRpc.mock.calls.filter(call => call[0] === 'sync_push_installation'),
       ).toHaveLength(2);
     });
     await act(() => droppedListener?.());
     await waitFor(() => {
       expect(
-        mockRpc.mock.calls.filter(call => call[0] === 'register_push_token'),
+        mockRpc.mock.calls.filter(call => call[0] === 'sync_push_installation'),
       ).toHaveLength(3);
     });
 
@@ -401,23 +575,33 @@ describe('push token yaşam döngüsü', () => {
     expect(droppedRemove).toHaveBeenCalledTimes(1);
   });
 
-  it('ilk oturumda izin kararı verilmediyse izni ister ve tokenı kaydeder', async () => {
-    getPermissionsAsync
-      .mockResolvedValueOnce({
-        status: 'undetermined',
-        granted: false,
-        canAskAgain: true,
-        expires: 'never',
-      } as Notifications.NotificationPermissionsStatus)
-      .mockResolvedValue({
-        status: 'granted',
-        granted: true,
-        canAskAgain: true,
-        expires: 'never',
-      } as Notifications.NotificationPermissionsStatus);
-    requestPermissionsAsync.mockResolvedValueOnce({
-      status: 'granted',
-      granted: true,
+  it('başlangıç ve lifecycle olayları izin kararı verilmediyse OS izni istemez', async () => {
+    const appRemove = jest.fn();
+    let appStateListener: ((state: 'active' | 'background') => void) | null =
+      null;
+    let tokenListener: (() => void) | null = null;
+    let droppedListener: (() => void) | null = null;
+    jest
+      .spyOn(AppState, 'addEventListener')
+      .mockImplementation((_event, listener) => {
+        appStateListener = listener as typeof appStateListener;
+        return { remove: appRemove };
+      });
+    jest
+      .mocked(Notifications.addPushTokenListener)
+      .mockImplementation(listener => {
+        tokenListener = listener as () => void;
+        return { remove: jest.fn() };
+      });
+    jest
+      .mocked(Notifications.addNotificationsDroppedListener)
+      .mockImplementation(listener => {
+        droppedListener = listener;
+        return { remove: jest.fn() };
+      });
+    getPermissionsAsync.mockResolvedValue({
+      status: 'undetermined',
+      granted: false,
       canAskAgain: true,
       expires: 'never',
     } as Notifications.NotificationPermissionsStatus);
@@ -425,12 +609,18 @@ describe('push token yaşam döngüsü', () => {
     const { unmount } = await renderHook(() => usePushRegistration('user-1'));
 
     await waitFor(() => {
-      expect(requestPermissionsAsync).toHaveBeenCalledTimes(1);
-      expect(mockRpc).toHaveBeenCalledWith(
-        'register_push_token',
-        expect.objectContaining({ expo_token: 'ExpoPushToken[token-one]' }),
-      );
+      expect(getPermissionsAsync).toHaveBeenCalledTimes(1);
     });
+    await act(() => appStateListener?.('active'));
+    await act(() => tokenListener?.());
+    await act(() => droppedListener?.());
+    await waitFor(() => {
+      expect(getPermissionsAsync).toHaveBeenCalledTimes(4);
+    });
+
+    expect(requestPermissionsAsync).not.toHaveBeenCalled();
+    expect(getExpoPushTokenAsync).not.toHaveBeenCalled();
+    expect(mockRpc).not.toHaveBeenCalled();
     await unmount();
   });
 

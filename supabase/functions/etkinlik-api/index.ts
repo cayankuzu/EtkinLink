@@ -1,9 +1,18 @@
 import { createClient } from "npm:@supabase/supabase-js@2.112.1";
+import {
+  ETKINLIK_API_BASE_URL,
+  fetchBoundedJson,
+} from "../ingest-events/upstreamHttp.ts";
+import {
+  BoundedJsonError,
+  readBoundedJsonRequest,
+} from "../_shared/boundedJson.ts";
 
-const API_BASE_URL = "https://etkinlik.io/api/v2";
 const CATALOG_TTL_MS = 6 * 60 * 60 * 1000;
 const RESPONSE_TTL_MS = 2 * 60 * 1000;
 const MAX_TAKE = 50;
+const MAX_SKIP = 1_000_000;
+const MAX_FILTER_VALUES = 20;
 
 type JsonObject = Record<string, unknown>;
 type CatalogItem = { id: number; name: string; slug: string };
@@ -179,33 +188,24 @@ async function fetchApi(
 ): Promise<unknown> {
   const apiToken = Deno.env.get("ETKINLIK_IO_API_TOKEN");
   if (!apiToken) throw new Error("API_TOKEN_MISSING");
-  const url = new URL(`${API_BASE_URL}${path}`);
+  const url = new URL(`${ETKINLIK_API_BASE_URL}${path}`);
   if (params) url.search = params.toString();
   const cacheKey = url.toString();
   const cached = responseCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.value;
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12_000);
-  try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        Accept: "application/json",
-        "X-Etkinlik-Token": apiToken,
-        "User-Agent": "EtkinLink/1.0",
-      },
-    });
-    if (!response.ok) throw new Error(`UPSTREAM_${response.status}`);
-    const value: unknown = await response.json();
-    responseCache.set(cacheKey, {
-      expiresAt: Date.now() + RESPONSE_TTL_MS,
-      value,
-    });
-    return value;
-  } finally {
-    clearTimeout(timeout);
-  }
+  const value = await fetchBoundedJson(url, {
+    headers: {
+      Accept: "application/json",
+      "X-Etkinlik-Token": apiToken,
+      "User-Agent": "EtkinLink/1.0",
+    },
+  });
+  responseCache.set(cacheKey, {
+    expiresAt: Date.now() + RESPONSE_TTL_MS,
+    value,
+  });
+  return value;
 }
 
 function catalogItems(value: unknown): CatalogItem[] {
@@ -275,7 +275,9 @@ Deno.serve(async (request) => {
   }
 
   try {
-    const body = record(await request.json()) ?? {};
+    const body =
+      record((await readBoundedJsonRequest(request, 16 * 1024)).value) ??
+        {};
     const action = text(body.action) || "list";
 
     if (action === "catalog") {
@@ -296,7 +298,7 @@ Deno.serve(async (request) => {
     const catalog = await getCatalog();
     const city = text(body.city);
     const formats = Array.isArray(body.formats)
-      ? body.formats.map(text).filter(Boolean)
+      ? body.formats.slice(0, MAX_FILTER_VALUES).map(text).filter(Boolean)
       : [];
     const cityIds = city ? findIds(catalog.cities, [city]) : [];
     const formatIds = findIds(catalog.formats, formats);
@@ -307,7 +309,10 @@ Deno.serve(async (request) => {
       return jsonResponse(200, { events: [], total: 0, nextSkip: null });
     }
 
-    const skip = Math.max(0, Math.trunc(numberValue(body.skip) ?? 0));
+    const skip = Math.min(
+      MAX_SKIP,
+      Math.max(0, Math.trunc(numberValue(body.skip) ?? 0)),
+    );
     const take = Math.min(
       MAX_TAKE,
       Math.max(1, Math.trunc(numberValue(body.take) ?? 30)),
@@ -337,6 +342,9 @@ Deno.serve(async (request) => {
       nextSkip: events.length === take && consumed < total ? consumed : null,
     });
   } catch (error) {
+    if (error instanceof BoundedJsonError) {
+      return jsonResponse(error.status, { error: error.message });
+    }
     const code = error instanceof Error ? error.message : "UNKNOWN";
     const status = code === "UPSTREAM_429" ? 429 : 502;
     return jsonResponse(status, {

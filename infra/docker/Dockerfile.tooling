@@ -1,0 +1,46 @@
+# syntax=docker/dockerfile:1.17
+
+ARG NODE_IMAGE=node:22-bookworm-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5
+ARG K6_IMAGE=grafana/k6:1.3.0@sha256:3ddc8b1a33a2c3d8edc6e99b6a762ae36cba08788463458f5e6a7703e14eb77d
+
+FROM ${NODE_IMAGE} AS worker-dependencies
+
+WORKDIR /build/worker
+COPY infra/cloudflare/etkinlink-edge/package.json infra/cloudflare/etkinlink-edge/package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm,sharing=locked \
+    npm ci --ignore-scripts --no-audit --no-fund
+
+FROM ${NODE_IMAGE} AS tooling
+
+LABEL org.opencontainers.image.title="EtkinLink deterministic contract tooling" \
+      org.opencontainers.image.description="Non-production mock and contract runner for the frozen EtkinLink feature set" \
+      org.opencontainers.image.source="https://github.com/cayankuzu/EtkinLink"
+
+ENV HOME=/tmp/home \
+    NPM_CONFIG_CACHE=/tmp/npm-cache \
+    WRANGLER_HOME=/tmp/wrangler \
+    XDG_CONFIG_HOME=/tmp/xdg-config \
+    XDG_CACHE_HOME=/tmp/xdg-cache \
+    CI=true
+
+WORKDIR /workspace
+COPY --from=worker-dependencies --chown=1000:1000 /build/worker/node_modules /workspace/infra/cloudflare/etkinlink-edge/node_modules
+COPY --chown=1000:1000 infra/cloudflare/etkinlink-edge /workspace/infra/cloudflare/etkinlink-edge
+COPY --chown=1000:1000 infra/docker/mocks /workspace/infra/docker/mocks
+COPY --chown=1000:1000 infra/docker/scripts /workspace/infra/docker/scripts
+COPY --chown=1000:1000 supabase/functions/ingest-events/upstreamHttp.ts /workspace/supabase/functions/ingest-events/upstreamHttp.ts
+
+USER 1000:1000
+EXPOSE 8080
+HEALTHCHECK --interval=5s --timeout=3s --start-period=5s --retries=12 \
+  CMD ["node", "-e", "fetch('http://127.0.0.1:8080/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+CMD ["node", "infra/docker/mocks/upstream-server.mjs"]
+
+FROM ${K6_IMAGE} AS k6-runner
+
+LABEL org.opencontainers.image.title="EtkinLink bounded local load runner" \
+      org.opencontainers.image.description="Synthetic contract-only k6 profile; never targets production"
+COPY --chown=12345:12345 infra/docker/load /scripts
+USER 12345:12345
+ENTRYPOINT ["k6"]
+CMD ["run", "/scripts/docker-local.k6.js"]

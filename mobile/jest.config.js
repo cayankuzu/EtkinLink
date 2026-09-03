@@ -8,6 +8,7 @@ module.exports = {
     '\\.(ttf|otf)$': '<rootDir>/src/test/fileMock.js',
     '^expo-file-system/legacy$': '<rootDir>/src/test/expoFileSystemMock.js',
     '^expo-media-library$': '<rootDir>/src/test/expoMediaLibraryMock.js',
+    '^expo-updates$': '<rootDir>/src/test/expoUpdatesMock.js',
     '^@app/(.*)$': '<rootDir>/src/app/$1',
     '^@features/(.*)$': '<rootDir>/src/features/$1',
     '^@shared/(.*)$': '<rootDir>/src/shared/$1',

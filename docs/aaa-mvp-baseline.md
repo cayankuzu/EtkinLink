@@ -1,10 +1,11 @@
 # AAA-MVP başlangıç durumu
 
-Baseline commit: `f8a1e48de47d49021ea092c609440240fd13e23d`
-Yerel inceleme tarihi: 2026-08-30
+Tarihsel feature-freeze baseline commit'i: `f8a1e48de47d49021ea092c609440240fd13e23d`
+Bu hardening görevinin `origin/main` başlangıç commit'i: `20dc22c76174ab7a9c1a2fae79ed89e45597b57e`
+Tarihsel yerel inceleme tarihi: 2026-08-30; güncel görev yeniden doğrulaması: 2026-08-31
 Başlangıç release kararı: **NO-GO**
 
-Bu puanlar yalnız repository ve bu makinede gerçekten çalıştırılan otomasyon kanıtına dayanır. Signed artifact, staging, fiziksel cihaz, restore, load ve provider dashboard kanıtı yoktur; bu alanlara 9.80 verilmemiştir.
+Bu belgedeki sayısal puan tablosu 2026-08-30 tarihsel ölçümünü korur; güncel final skor veya release kanıtı değildir. `20dc22c...` başlangıcında OTA kaynak yapılandırması Android ve iOS'ta açıktır, Android metadata'sı ve EAS kanalları vardır; ancak imzalı artifact/runtime parity kanıtı yoktur. Signed artifact, staging, fiziksel cihaz, restore ve provider dashboard kanıtı olmadığı için hiçbir güncel alan 9.80 olarak işaretlenmez. Canonical güncel karar `release-readiness.md` içindedir.
 
 ## Özellik dondurma kanıtı
 
@@ -54,7 +55,7 @@ Bu puanlar yalnız repository ve bu makinede gerçekten çalıştırılan otomas
 |  20 | Domain mantığı      |      8.60 | Atomik RPC/unique/idempotency yaygın; bazı concurrency/RLS adversarial açıkları var | Oda/match/message               |
 |  21 | Bağımlılıklar       |      7.40 | Lockfile var; 12 patch mismatch ve 5 high advisory                                  | Build/supply chain              |
 |  22 | Batarya/kaynak      |      7.20 | Lifecycle yönetimi var; cihaz battery/thermal ölçümü yok                            | Uzun oturumlar                  |
-|  23 | Platform uyumu      |      6.90 | Native projeler commitli; OTA iOS kapalı, Android metadata yok, Doctor 19/20        | İki platform release, P0        |
+|  23 | Platform uyumu      |      6.90 | 2026-08-30 tarihsel ölçümde OTA/native parity ve Doctor açığı raporlandı; güncel kaynakta OTA açıktır, signed artifact kanıtı hâlâ yoktur | İki platform release, P0 |
 |  24 | Store readiness     |      7.00 | Checklist/privacy belgeleri var; signed store artifact/console kanıtı yok           | Yayın                           |
 |  25 | Operasyon olgunluğu |      7.50 | Runbook/SLO taslağı var; restore/canary/incident tatbikatı yok                      | Production                      |
 |  26 | Okunabilirlik       |      8.70 | Strict TS ve feature modülleri iyi; karmaşıklık bütçesi sınırlı                     | Geliştirme                      |
@@ -74,7 +75,7 @@ Bu puanlar yalnız repository ve bu makinede gerçekten çalıştırılan otomas
 | ------- | --------------------------------------------------------------------------------- | --------------------- | --------------------------- | -------------------------------------------------------------------------------------------- |
 | P0      | `room_messages` SELECT/Realtimes policy ayrılmış üyede `status='joined'` aramıyor | Odalar                | Private mesaj geçmişi       | Forward-only policy migration; migration rollback yalnız eski policy'yi kontrollü geri kurar |
 | P0      | Signed profile URL'leri disk cache ve feed snapshot'a girebiliyor                 | Profil/event cards    | Cross-session private medya | Memory-only/no-store ve logout purge                                                         |
-| P0      | OTA disabled/unwired; release guard false-positive                                | Startup/release       | İki platform                | İlk OTA-enabled binary; production update yayımlamadan önce native rollback                  |
+| P0      | Tarihsel OTA wiring/parity açığı; güncel durumda signed binary ve rollback kanıtı yok | Startup/release    | İki platform                | Production update yayımlamadan önce same-SHA signed binary, signature ve rollback kanıtı     |
 | P1      | Event ingest chunk'ları kısmi görünür, upstream response/retry sınırı zayıf       | Event catalog         | Katalog doğruluğu           | Transaction RPC; eski Function sürümüne rollback                                             |
 | P1      | Event fallback abort/auth hatalarını RSS fan-out'a çevirebilir                    | Keşfet                | Ağ/batarya/provider         | Error classification, signal ve bounded fallback                                             |
 | P1      | Optimistic save rollback/outbox dead-letter eksik                                 | Saved events/messages | Veri/UI tutarlılığı         | Snapshot rollback ve bounded outbox                                                          |

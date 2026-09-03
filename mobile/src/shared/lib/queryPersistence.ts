@@ -63,12 +63,17 @@ function sanitizeClient(client: PersistedClient): PersistedClient {
 }
 
 async function readWithTimeout(): Promise<string | null> {
-  return Promise.race([
-    AsyncStorage.getItem(cacheKey),
-    new Promise<null>(resolve =>
-      setTimeout(() => resolve(null), restoreTimeoutMs),
-    ),
-  ]);
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      AsyncStorage.getItem(cacheKey),
+      new Promise<null>(resolve => {
+        timeout = setTimeout(() => resolve(null), restoreTimeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
 }
 
 export const publicQueryPersister: Persister = {

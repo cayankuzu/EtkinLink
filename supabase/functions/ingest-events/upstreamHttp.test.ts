@@ -1,7 +1,9 @@
 import {
+  assertAllowedEtkinlikApiUrl,
   assertAllowedEventsUrl,
   EVENTS_API_URL,
   fetchBoundedJson,
+  parseEtkinlikPublicEventUrl,
   parseRetryAfterMs,
   readBoundedJson,
   retryDelayMs,
@@ -45,7 +47,6 @@ Deno.test("yalnızca sabit HTTPS etkinlik uç noktası ve bilinen sorgular kabul
     const rejected of [
       "http://etkinlik.io/api/v2/events",
       "https://evil.example/api/v2/events",
-      "https://etkinlik.io/api/v2/cities",
       "https://etkinlik.io/api/v2/events?redirect=https://evil.example",
       "https://user:password@etkinlik.io/api/v2/events",
     ]
@@ -58,6 +59,83 @@ Deno.test("yalnızca sabit HTTPS etkinlik uç noktası ve bilinen sorgular kabul
       assertEquals(error.message, "UPSTREAM_URL_NOT_ALLOWED", "allowlist kodu");
     }
   }
+});
+
+Deno.test("yalnız katalog, event listesi ve sayısal event detay yolları kabul edilir", () => {
+  for (
+    const allowed of [
+      "https://etkinlik.io/api/v2/cities",
+      "https://etkinlik.io/api/v2/formats",
+      "https://etkinlik.io/api/v2/categories",
+      "https://etkinlik.io/api/v2/events/42",
+      "https://etkinlik.io/api/v2/events?city_ids=34&format_ids=7&end_lte=2026-09-01",
+    ]
+  ) {
+    assertEquals(
+      assertAllowedEtkinlikApiUrl(allowed).origin,
+      "https://etkinlik.io",
+      "allowlist origin",
+    );
+  }
+
+  for (
+    const rejected of [
+      "https://etkinlik.io/api/v2/events/0",
+      "https://etkinlik.io/api/v2/events/not-a-number",
+      "https://etkinlik.io/api/v2/users",
+      "https://etkinlik.io/api/v2/cities?redirect=https://evil.example",
+      "https://etkinlik.io/api/v2/cities?take=1",
+      "https://etkinlik.io/api/v2/events/42?take=1",
+      "https://etkinlik.io/api/v2/events?take=51",
+      "https://etkinlik.io/api/v2/events?skip=-1",
+      "https://etkinlik.io/api/v2/events?sort_by=unknown",
+      "https://etkinlik.io/api/v2/events?city_ids=1,,2",
+      "https://etkinlik.io/api/v2/events?take=10&take=20",
+      "https://etkinlik.io/api/v2/events?start_gte=tomorrow",
+    ]
+  ) {
+    try {
+      assertAllowedEtkinlikApiUrl(rejected);
+      throw new Error(`URL reddedilmeliydi: ${rejected}`);
+    } catch (error) {
+      assert(error instanceof UpstreamHttpError, "allowlist hata türü");
+      assertEquals(error.message, "UPSTREAM_URL_NOT_ALLOWED", "allowlist kodu");
+    }
+  }
+});
+
+Deno.test("public event URL'si exact origin, güvenli slug ve sayısal kimlik ister", () => {
+  assertEquals(
+    parseEtkinlikPublicEventUrl("https://etkinlik.io/etkinlik/42/guvenli-slug"),
+    {
+      eventId: 42,
+      url: "https://etkinlik.io/etkinlik/42/guvenli-slug",
+    },
+    "public detail",
+  );
+  for (
+    const rejected of [
+      "https://evil.example/etkinlik/42/guvenli-slug",
+      "https://etkinlik.io/etkinlik/42/%2fadmin",
+      "https://etkinlik.io/etkinlik/42/../admin",
+      "https://etkinlik.io/etkinlik/42?next=evil",
+      "https://user:pass@etkinlik.io/etkinlik/42",
+      "https://etkinlik.io/etkinlik/0",
+    ]
+  ) {
+    assertEquals(parseEtkinlikPublicEventUrl(rejected), null, rejected);
+  }
+});
+
+Deno.test("upstream transport yalnız GET ve gövdesiz çağrı kabul eder", async () => {
+  await assertRejectsWithCode(
+    () => fetchBoundedJson(EVENTS_API_URL, { method: "POST" }),
+    "UPSTREAM_METHOD_NOT_ALLOWED",
+  );
+  await assertRejectsWithCode(
+    () => fetchBoundedJson(EVENTS_API_URL, { body: "{}" }),
+    "UPSTREAM_METHOD_NOT_ALLOWED",
+  );
 });
 
 Deno.test("Retry-After saniye ve HTTP tarihini güvenli gecikmeye çevirir", () => {

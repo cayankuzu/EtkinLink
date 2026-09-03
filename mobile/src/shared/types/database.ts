@@ -218,9 +218,13 @@ export type Database = {
         expo_push_token: string;
         platform: 'android' | 'ios';
         project_id: string;
+        installation_id: string;
+        app_environment: 'development' | 'preview' | 'production';
         app_version: string | null;
         last_seen_at: string;
+        token_expires_at: string;
         disabled_at: string | null;
+        revocation_reason: string | null;
         created_at: string;
         updated_at: string;
       }>;
@@ -619,6 +623,31 @@ export type Database = {
       unregister_push_token: {
         Args: { expo_token: string };
         Returns: undefined;
+      };
+      sync_push_installation: {
+        Args: {
+          expo_token: string;
+          token_platform: 'android' | 'ios';
+          project_id: string;
+          client_installation_id: string;
+          app_environment: 'development' | 'preview' | 'production';
+          app_version?: string | null;
+          previous_expo_tokens?: string[];
+        };
+        Returns: undefined;
+      };
+      revoke_push_installation: {
+        Args: {
+          client_installation_id: string;
+          app_environment: 'development' | 'preview' | 'production';
+          expo_token?: string | null;
+          revocation_reason?:
+            | 'logout'
+            | 'session_loss'
+            | 'account_switch'
+            | 'permission_denied';
+        };
+        Returns: boolean;
       };
       list_matches: {
         Args: {

@@ -91,27 +91,40 @@ jobs:
             local key="$1"
             local run_id="$2"
             local expected_workflow="$3"
+            local expected_events="$4"
             if [[ -z "$run_id" ]]; then return 0; fi
             [[ "$run_id" =~ ^[0-9]+$ ]]
             gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" > "artifacts/evidence-input/run-metadata/${key}.json"
-            KEY="$key" EXPECTED_WORKFLOW="$expected_workflow" TARGET_SHA="$TARGET_SHA" \
+            KEY="$key" EXPECTED_WORKFLOW="$expected_workflow" EXPECTED_EVENTS="$expected_events" \
+              EXPECTED_RUN_ID="$run_id" TARGET_SHA="$TARGET_SHA" \
               node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
           const run = JSON.parse(readFileSync(`artifacts/evidence-input/run-metadata/${process.env.KEY}.json`, 'utf8'));
+          if (!Number.isSafeInteger(run.id) || run.id < 1) throw new Error(`${process.env.KEY} run ID is invalid.`);
+          if (String(run.id) !== process.env.EXPECTED_RUN_ID) throw new Error(`${process.env.KEY} run ID mismatch.`);
+          if (run.status !== 'completed') throw new Error(`${process.env.KEY} run is not completed.`);
           if (run.conclusion !== 'success') throw new Error(`${process.env.KEY} run did not succeed.`);
           if (run.head_sha !== process.env.TARGET_SHA) throw new Error(`${process.env.KEY} is not from target SHA.`);
-          if (!String(run.path ?? '').endsWith(`/${process.env.EXPECTED_WORKFLOW}`)) {
+          if (run.path !== `.github/workflows/${process.env.EXPECTED_WORKFLOW}`) {
             throw new Error(`${process.env.KEY} has an unexpected workflow path.`);
+          }
+          if (!process.env.EXPECTED_EVENTS.split(',').includes(run.event)) {
+            throw new Error(`${process.env.KEY} has an unexpected event.`);
+          }
+          if (!Number.isSafeInteger(run.run_attempt) || run.run_attempt < 1) throw new Error(`${process.env.KEY} has no valid attempt.`);
+          if (run.repository?.full_name !== process.env.GITHUB_REPOSITORY ||
+              run.head_repository?.full_name !== process.env.GITHUB_REPOSITORY) {
+            throw new Error(`${process.env.KEY} is not from the canonical repository.`);
           }
           NODE
             gh run download "$run_id" --dir "artifacts/evidence-input/${key}"
           }
-          download_run mobile_ci "$MOBILE_CI_RUN_ID" mobile-ci.yml
-          download_run staging_e2e "$STAGING_E2E_RUN_ID" mobile-e2e.yml
-          download_run staging_load "$STAGING_LOAD_RUN_ID" staging-load-test.yml
-          download_run mobile_release "$MOBILE_RELEASE_RUN_ID" mobile-release.yml
-          download_run ota_production "$OTA_PRODUCTION_RUN_ID" eas-update-production.yml
-          download_run cloudflare_production "$CLOUDFLARE_PRODUCTION_RUN_ID" cloudflare-production.yml
+          download_run mobile_ci "$MOBILE_CI_RUN_ID" mobile-ci.yml push
+          download_run staging_e2e "$STAGING_E2E_RUN_ID" mobile-e2e.yml schedule,workflow_dispatch
+          download_run staging_load "$STAGING_LOAD_RUN_ID" staging-load-test.yml workflow_dispatch
+          download_run mobile_release "$MOBILE_RELEASE_RUN_ID" mobile-release.yml workflow_dispatch
+          download_run ota_production "$OTA_PRODUCTION_RUN_ID" eas-update-production.yml workflow_dispatch
+          download_run cloudflare_production "$CLOUDFLARE_PRODUCTION_RUN_ID" cloudflare-production.yml workflow_dispatch
       - name: Download reviewed same-SHA manual evidence bundle
         if: inputs.manual_evidence_release_tag != ''
         shell: bash
@@ -144,11 +157,8 @@ jobs:
             --dir artifacts/evidence-input/manual-bundle
           BUNDLE="artifacts/evidence-input/manual-bundle/${MANUAL_EVIDENCE_ASSET_NAME}"
           test -f "$BUNDLE"
-          while IFS= read -r entry; do
-            [[ "$entry" =~ ^[A-Za-z0-9._/-]+$ ]]
-            [[ "$entry" != /* ]]
-            [[ "/$entry/" != *"/../"* ]]
-          done < <(unzip -Z1 "$BUNDLE")
+          node scripts/release/apply-evidence-claims.mjs \
+            --validate-manual-zip="$BUNDLE"
           unzip -q "$BUNDLE" -d artifacts/evidence-input/manual
           test -z "$(find artifacts/evidence-input/manual -type l -print -quit)"
       - name: Build explicit evidence claims

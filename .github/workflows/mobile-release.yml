@@ -2,23 +2,63 @@ name: Mobil production release kanıtı
 
 on:
   workflow_dispatch:
+    inputs:
+      target_sha:
+        description: "Exact 40-character release commit SHA from origin/main"
+        required: true
+        type: string
 
 permissions:
   contents: read
   actions: read
 
 jobs:
-  release-evidence:
+  validate-target:
     runs-on: ubuntu-latest
+    outputs:
+      target_sha: ${{ steps.target.outputs.target_sha }}
+    steps:
+      - id: target
+        name: Validate immutable release target SHA
+        shell: bash
+        env:
+          REQUESTED_TARGET_SHA: ${{ inputs.target_sha }}
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$REQUESTED_TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$WORKFLOW_SHA" = "$REQUESTED_TARGET_SHA"
+          echo "target_sha=$REQUESTED_TARGET_SHA" >> "$GITHUB_OUTPUT"
+
+  release-evidence:
+    needs: validate-target
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.validate-target.outputs.target_sha }}
+          fetch-depth: 0
+      - name: Verify immutable main commit and clean tree
+        shell: bash
+        env:
+          TARGET_SHA: ${{ needs.validate-target.outputs.target_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$TARGET_SHA" origin/main
+          test -z "$(git status --porcelain --untracked-files=all)"
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
       - name: Mevcut commit CI, gerçek staging E2E ve 10K kanıtını doğrula
-        run: node mobile/scripts/check-github-release-evidence.mjs
+        run: |
+          node --test mobile/scripts/check-github-release-evidence.test.mjs
+          node mobile/scripts/check-github-release-evidence.mjs
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_SHA: ${{ needs.validate-target.outputs.target_sha }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-prerequisite-evidence
@@ -27,7 +67,7 @@ jobs:
           retention-days: 30
 
   android-release:
-    needs: release-evidence
+    needs: [validate-target, release-evidence]
     runs-on: ubuntu-latest
     environment: production
     defaults:
@@ -35,6 +75,20 @@ jobs:
         working-directory: mobile
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.validate-target.outputs.target_sha }}
+          fetch-depth: 0
+      - name: Verify immutable main commit and clean tree
+        shell: bash
+        working-directory: .
+        env:
+          TARGET_SHA: ${{ needs.validate-target.outputs.target_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$TARGET_SHA" origin/main
+          test -z "$(git status --porcelain --untracked-files=all)"
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
@@ -137,8 +191,14 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      - name: Remove transient Android credentials and environment
+        if: always()
+        shell: bash
+        working-directory: .
+        run: rm -f mobile/.env mobile/android/app/etkinlink-upload.keystore
+
   ios-release:
-    needs: release-evidence
+    needs: [validate-target, release-evidence]
     runs-on: macos-15
     environment: production
     defaults:
@@ -146,6 +206,20 @@ jobs:
         working-directory: mobile
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.validate-target.outputs.target_sha }}
+          fetch-depth: 0
+      - name: Verify immutable main commit and clean tree
+        shell: bash
+        working-directory: .
+        env:
+          TARGET_SHA: ${{ needs.validate-target.outputs.target_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$TARGET_SHA" origin/main
+          test -z "$(git status --porcelain --untracked-files=all)"
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
@@ -167,7 +241,27 @@ jobs:
           SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
       - name: EAS production build sonucunu bekle
         shell: bash
-        run: npx --yes eas-cli@21.0.0 build --platform ios --profile production --non-interactive --json > eas-ios-build.json
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const eas = JSON.parse(readFileSync('eas.json', 'utf8'));
+          if (
+            eas?.build?.production?.channel !== 'production' ||
+            eas?.build?.production?.environment !== 'production' ||
+            eas?.build?.production?.developmentClient === true ||
+            eas?.build?.production?.distribution === 'internal'
+          ) {
+            throw new Error('eas.json production profile/channel/environment validation failed.');
+          }
+          NODE
+          npx --yes eas-cli@21.0.0 build \
+            --platform ios \
+            --profile production \
+            --non-interactive \
+            --json \
+            > eas-ios-build.json
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
@@ -176,16 +270,31 @@ jobs:
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          TARGET_SHA: ${{ needs.validate-target.outputs.target_sha }}
       - name: Signed IPA'yı indir ve entitlement'ları doğrula
         shell: bash
         env:
           IOS_SIGNING_TEAM_ID: ${{ vars.IOS_SIGNING_TEAM_ID }}
+          TARGET_SHA: ${{ needs.validate-target.outputs.target_sha }}
         run: |
           set -euo pipefail
-          TARGET_SHA="$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
           mkdir -p artifacts/ios-payload
-          BUILD_URL="$(node -e "const fs=require('fs');const value=JSON.parse(fs.readFileSync('eas-ios-build.json','utf8'));const build=Array.isArray(value)?value[0]:value;const url=build?.artifacts?.buildUrl;if(!url)process.exit(1);process.stdout.write(url)")"
-          curl --fail --location --retry 3 "$BUILD_URL" --output artifacts/EtkinLink.ipa
+          BUILD_URL="$(node scripts/check-github-release-evidence.mjs \
+            --validate-eas-ios-build=eas-ios-build.json \
+            --target-sha="$TARGET_SHA")"
+          curl \
+            --proto '=https' \
+            --tlsv1.2 \
+            --fail \
+            --location \
+            --max-redirs 3 \
+            --connect-timeout 30 \
+            --max-time 600 \
+            --max-filesize 1073741824 \
+            --retry 3 \
+            "$BUILD_URL" \
+            --output artifacts/EtkinLink.ipa
           unzip -q artifacts/EtkinLink.ipa -d artifacts/ios-payload
           APP_PATH="$(find artifacts/ios-payload/Payload -maxdepth 1 -type d -name '*.app' -print -quit)"
           test -n "$APP_PATH"

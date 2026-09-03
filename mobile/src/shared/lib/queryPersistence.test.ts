@@ -1,4 +1,9 @@
-import { shouldPersistQueryKey } from './queryPersistence';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+import {
+  publicQueryPersister,
+  shouldPersistQueryKey,
+} from './queryPersistence';
 
 describe('kalıcı query cache allowlist', () => {
   it.each([
@@ -17,5 +22,21 @@ describe('kalıcı query cache allowlist', () => {
     { queryKey: ['saved-events'] },
   ])('kişisel veri alanını kalıcılaştırmaz: $queryKey', ({ queryKey }) => {
     expect(shouldPersistQueryKey(queryKey)).toBe(false);
+  });
+});
+
+describe('kalıcı query cache restore timeout', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  it('hızlı storage sonucu sonrası timeout handle bırakmaz', async () => {
+    jest.useFakeTimers();
+    jest.spyOn(AsyncStorage, 'getItem').mockResolvedValue(null);
+
+    await expect(publicQueryPersister.restoreClient()).resolves.toBeUndefined();
+
+    expect(jest.getTimerCount()).toBe(0);
   });
 });

@@ -1,15 +1,7 @@
-import {
-  classifyReceipt,
-  handlePushReceipts,
-  nextReceiptAttempt,
-} from "./index.ts";
+import { classifyReceipt, handlePushReceipts } from "./index.ts";
 import { createWorkerSignature } from "../_shared/workerAuth.ts";
 
 const workerSecret = "worker-secret-12345678901234567890";
-
-function assert(value: unknown, message: string): asserts value {
-  if (!value) throw new Error(message);
-}
 
 function assertEquals(actual: unknown, expected: unknown, message: string) {
   const left = JSON.stringify(actual);
@@ -58,19 +50,15 @@ type Delivery = {
   expo_ticket_id: string;
   push_token_id: string;
   receipt_attempt_count: number | null;
+  receipt_lease_id: string;
 };
 
 function createAdmin(
   deliveries: Delivery[],
-  failedUpdateId?: string,
-  failedInvalidReceiptId?: string,
+  failedPersistId?: string,
 ) {
   const writes = {
-    deliveryUpdates: [] as Array<{
-      id: string;
-      values: Record<string, unknown>;
-    }>,
-    invalidReceiptPersists: [] as Array<Record<string, unknown>>,
+    receiptPersists: [] as Array<Record<string, unknown>>,
     rpcCalls: [] as Array<[string, Record<string, unknown>]>,
   };
   const admin = {
@@ -79,29 +67,16 @@ function createAdmin(
       if (name === "consume_push_worker_nonce") {
         return { data: true, error: null };
       }
-      if (name === "persist_invalid_push_receipt") {
-        writes.invalidReceiptPersists.push(args);
-        const failed = args.target_delivery_id === failedInvalidReceiptId;
+      if (name === "persist_push_receipt_result") {
+        writes.receiptPersists.push(args);
+        const failed = args.target_delivery_id === failedPersistId;
         return {
-          data: failed ? null : true,
+          data: failed ? false : true,
           error: failed ? new Error("atomic receipt write failed") : null,
         };
       }
       return { data: deliveries, error: null };
     },
-    from: (table: string) => ({
-      update: (values: Record<string, unknown>) => ({
-        eq: async (_column: string, id: string) => {
-          if (table === "notification_deliveries") {
-            writes.deliveryUpdates.push({ id, values });
-            return {
-              error: id === failedUpdateId ? new Error("write failed") : null,
-            };
-          }
-          return { error: null };
-        },
-      }),
-    }),
   };
   return { admin, writes };
 }
@@ -131,20 +106,6 @@ Deno.test("receipt sınıflandırma delivered, invalid, retryable ve permanent d
     }),
     "permanent_failure",
     "permanent receipt",
-  );
-});
-
-Deno.test("receipt backoff 5 dakikadan başlar ve 60 dakikada tavan yapar", () => {
-  const now = Date.now();
-  const firstDelay = new Date(nextReceiptAttempt(1)).getTime() - now;
-  const cappedDelay = new Date(nextReceiptAttempt(9)).getTime() - now;
-  assert(
-    firstDelay >= 5 * 60_000 && firstDelay < 5 * 60_000 + 100,
-    "first delay",
-  );
-  assert(
-    cappedDelay >= 60 * 60_000 && cappedDelay < 60 * 60_000 + 100,
-    "capped delay",
   );
 });
 
@@ -248,30 +209,35 @@ Deno.test("receipt batch success, retry, exhaustion ve invalid-token cleanup'ı 
       expo_ticket_id: "t1",
       push_token_id: "p1",
       receipt_attempt_count: 0,
+      receipt_lease_id: "00000000-0000-4000-8000-000000000001",
     },
     {
       id: "d2",
       expo_ticket_id: "t2",
       push_token_id: "p2",
       receipt_attempt_count: 0,
+      receipt_lease_id: "00000000-0000-4000-8000-000000000002",
     },
     {
       id: "d3",
       expo_ticket_id: "t3",
       push_token_id: "p3",
       receipt_attempt_count: 0,
+      receipt_lease_id: "00000000-0000-4000-8000-000000000003",
     },
     {
       id: "d4",
       expo_ticket_id: "t4",
       push_token_id: "p4",
       receipt_attempt_count: 2,
+      receipt_lease_id: "00000000-0000-4000-8000-000000000004",
     },
     {
       id: "d5",
       expo_ticket_id: "t5",
       push_token_id: "p5",
       receipt_attempt_count: 4,
+      receipt_lease_id: "00000000-0000-4000-8000-000000000005",
     },
   ];
   const { admin, writes } = createAdmin(deliveries);
@@ -317,29 +283,35 @@ Deno.test("receipt batch success, retry, exhaustion ve invalid-token cleanup'ı 
     invalidToken: 1,
   }, "receipt counters");
   assertEquals(
-    writes.deliveryUpdates.map((item) => item.values.receipt_status),
+    writes.receiptPersists.map((item) => item.result_status),
     [
       "delivered",
+      "invalid_token",
       "retryable",
       "permanent_failure",
-      "permanent_failure",
+      "retryable",
     ],
     "stored receipt states",
   );
-  assertEquals(writes.invalidReceiptPersists, [{
+  assertEquals(writes.receiptPersists[1], {
     target_delivery_id: "d2",
     expected_receipt_attempt_count: 0,
+    expected_receipt_lease_id: "00000000-0000-4000-8000-000000000002",
+    result_status: "invalid_token",
     result_error_code: "DeviceNotRegistered",
     result_error_message: "gone",
-  }], "invalid token and terminal receipt use one atomic RPC");
-  const retry = writes.deliveryUpdates.find((item) => item.id === "d3")?.values;
-  assert(retry?.receipt_next_attempt_at, "retry timestamp");
-  const exhausted = writes.deliveryUpdates.find((item) => item.id === "d5")
-    ?.values;
+  }, "invalid token and terminal receipt use one atomic RPC");
+  const retry = writes.receiptPersists.find((item) =>
+    item.target_delivery_id === "d3"
+  );
+  assertEquals(retry?.result_status, "retryable", "retry state");
+  const exhausted = writes.receiptPersists.find((item) =>
+    item.target_delivery_id === "d5"
+  );
   assertEquals(
-    exhausted?.receipt_next_attempt_at,
-    null,
-    "exhausted has no retry",
+    exhausted?.result_status,
+    "retryable",
+    "DB owns the exhausted retryable-to-terminal transition",
   );
 });
 
@@ -349,6 +321,7 @@ Deno.test("Expo receipt ağ ve protokol hataları 502 döner; DB update hatası 
     expo_ticket_id: "t1",
     push_token_id: "p1",
     receipt_attempt_count: 0,
+    receipt_lease_id: "00000000-0000-4000-8000-000000000006",
   };
   const networkAdmin = createAdmin([delivery]);
   const networkFailure = await handlePushReceipts(await request(), {
@@ -360,6 +333,16 @@ Deno.test("Expo receipt ağ ve protokol hataları 502 döner; DB update hatası 
     sleep: async () => undefined,
   });
   assertEquals(networkFailure.status, 502, "network failure");
+  assertEquals(
+    networkAdmin.writes.receiptPersists[0]?.result_status,
+    "retryable",
+    "network failure consumes a durable bounded attempt",
+  );
+  assertEquals(
+    networkAdmin.writes.receiptPersists[0]?.result_error_code,
+    "EXPO_TRANSIENT_FAILURE",
+    "network failure code",
+  );
 
   const protocolAdmin = createAdmin([delivery]);
   const protocolFailure = await handlePushReceipts(await request(), {
@@ -369,6 +352,11 @@ Deno.test("Expo receipt ağ ve protokol hataları 502 döner; DB update hatası 
     sleep: async () => undefined,
   });
   assertEquals(protocolFailure.status, 502, "protocol failure");
+  assertEquals(
+    protocolAdmin.writes.receiptPersists[0]?.result_status,
+    "retryable",
+    "transient HTTP failure consumes a durable bounded attempt",
+  );
 
   const updateAdmin = createAdmin([delivery], "d1");
   const skippedUpdate = await handlePushReceipts(await request(), {
@@ -389,10 +377,10 @@ Deno.test("invalid token atomik RPC hatasında receipt terminale düşürülmez"
     expo_ticket_id: "t-invalid",
     push_token_id: "p-invalid",
     receipt_attempt_count: 1,
+    receipt_lease_id: "00000000-0000-4000-8000-000000000007",
   };
   const { admin, writes } = createAdmin(
     [delivery],
-    undefined,
     delivery.id,
   );
   const response = await handlePushReceipts(await request(), {
@@ -416,12 +404,7 @@ Deno.test("invalid token atomik RPC hatasında receipt terminale düşürülmez"
   });
 
   assertEquals(response.status, 500, "atomic RPC failure status");
-  assertEquals(
-    writes.deliveryUpdates,
-    [],
-    "no non-atomic terminal receipt write",
-  );
-  assertEquals(writes.invalidReceiptPersists.length, 1, "atomic RPC attempted");
+  assertEquals(writes.receiptPersists.length, 1, "atomic RPC attempted");
 });
 
 Deno.test("receipt worker permanent Expo 4xx'i retry etmez", async () => {
@@ -430,6 +413,7 @@ Deno.test("receipt worker permanent Expo 4xx'i retry etmez", async () => {
     expo_ticket_id: "t1",
     push_token_id: "p1",
     receipt_attempt_count: 0,
+    receipt_lease_id: "00000000-0000-4000-8000-000000000008",
   };
   const { admin, writes } = createAdmin([delivery]);
   let attempts = 0;
@@ -448,18 +432,19 @@ Deno.test("receipt worker permanent Expo 4xx'i retry etmez", async () => {
   assertEquals(response.status, 502, "permanent Expo status");
   assertEquals(attempts, 1, "permanent Expo response not retried");
   assertEquals(
-    writes.deliveryUpdates[0]?.values.receipt_status,
+    writes.receiptPersists[0]?.result_status,
     "permanent_failure",
     "permanent HTTP failure terminally persisted",
   );
 });
 
-Deno.test("receipt worker malformed ve büyük Expo response'larını reddeder", async () => {
+Deno.test("receipt worker malformed ve büyük Expo 2xx response'larını bounded retryable yapar", async () => {
   const delivery: Delivery = {
     id: "d1",
     expo_ticket_id: "t1",
     push_token_id: "p1",
     receipt_attempt_count: 0,
+    receipt_lease_id: "00000000-0000-4000-8000-000000000009",
   };
   for (
     const expoResponse of [
@@ -496,11 +481,16 @@ Deno.test("receipt worker malformed ve büyük Expo response'larını reddeder",
       sleep: async () => undefined,
     });
     assertEquals(response.status, 502, "invalid protocol status");
-    assertEquals(attempts, 1, "200 protocol error not retried");
+    assertEquals(attempts, 1, "200 protocol error not immediately retried");
     assertEquals(
-      writes.deliveryUpdates[0]?.values.receipt_status,
-      "permanent_failure",
-      "protocol failure terminally persisted",
+      writes.receiptPersists[0]?.result_status,
+      "retryable",
+      "protocol failure consumes a bounded durable retry",
+    );
+    assertEquals(
+      writes.receiptPersists[0]?.result_error_code,
+      "EXPO_PROTOCOL_ERROR",
+      "protocol failure uses stable retry code",
     );
   }
 });

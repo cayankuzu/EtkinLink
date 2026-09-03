@@ -1,0 +1,458 @@
+name: Docker deterministic validation
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-validation-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CI: "true"
+  COMPOSE_PROJECT_NAME: etkinlink-docker-test
+  ETKINLINK_DOCKER_IMAGE_TAG: ci-${{ github.sha }}
+  DOCKER_BUILDKIT: "1"
+  BUILDKIT_PROGRESS: plain
+
+jobs:
+  compose-build-security:
+    name: Compose, deterministic build and supply chain
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+      - name: Initialize evidence directories
+        if: always()
+        shell: bash
+        run: mkdir -p artifacts/docker/build artifacts/docker/supply-chain
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Validate every Compose profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run docker:config 2>&1 | tee artifacts/docker/build/compose-config.txt
+      - name: Lint the tooling Dockerfile
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm -i \
+            hadolint/hadolint:v2.14.0-alpine@sha256:7aba693c1442eb31c0b015c129697cb3b6cb7da589d85c7562f9deb435a6657c \
+            /bin/hadolint --failure-threshold warning - \
+            < infra/docker/Dockerfile.tooling \
+            2>&1 | tee artifacts/docker/build/hadolint.txt
+      - name: Build tooling twice from clean cache and compare image IDs
+        id: deterministic
+        shell: bash
+        env:
+          IMAGE_A: etkinlink/docker-tooling:determinism-a-${{ github.sha }}
+          IMAGE_B: etkinlink/docker-tooling:determinism-b-${{ github.sha }}
+        run: |
+          set -euo pipefail
+          BUILD_CONTEXT="$RUNNER_TEMP/etkinlink-build-context"
+          SOURCE_ARCHIVE="$RUNNER_TEMP/etkinlink-source.tar"
+          mkdir -p "$BUILD_CONTEXT"
+          git archive --format=tar --output "$SOURCE_ARCHIVE" HEAD
+          tar -xf "$SOURCE_ARCHIVE" -C "$BUILD_CONTEXT"
+          sha256sum "$SOURCE_ARCHIVE" \
+            | tee artifacts/docker/build/source-archive.sha256
+          SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
+          export SOURCE_DATE_EPOCH
+
+          docker buildx build \
+            --pull \
+            --no-cache \
+            --load \
+            --platform linux/amd64 \
+            --target tooling \
+            --provenance=false \
+            --file "$BUILD_CONTEXT/infra/docker/Dockerfile.tooling" \
+            --build-arg "SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}" \
+            --tag "$IMAGE_A" \
+            "$BUILD_CONTEXT" 2>&1 | tee artifacts/docker/build/build-a.txt
+          IMAGE_ID_A="$(docker image inspect "$IMAGE_A" --format '{{.Id}}')"
+
+          docker buildx build \
+            --pull \
+            --no-cache \
+            --load \
+            --platform linux/amd64 \
+            --target tooling \
+            --provenance=false \
+            --file "$BUILD_CONTEXT/infra/docker/Dockerfile.tooling" \
+            --build-arg "SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}" \
+            --tag "$IMAGE_B" \
+            "$BUILD_CONTEXT" 2>&1 | tee artifacts/docker/build/build-b.txt
+          IMAGE_ID_B="$(docker image inspect "$IMAGE_B" --format '{{.Id}}')"
+
+          printf '%s  first\n%s  second\n' "$IMAGE_ID_A" "$IMAGE_ID_B" \
+            | tee artifacts/docker/build/image-ids.txt
+          test "$IMAGE_ID_A" = "$IMAGE_ID_B"
+          echo "source_date_epoch=$SOURCE_DATE_EPOCH" >> "$GITHUB_OUTPUT"
+          echo "image_id=$IMAGE_ID_A" >> "$GITHUB_OUTPUT"
+      - name: Export provenance-bearing OCI archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_CONTEXT="$RUNNER_TEMP/etkinlink-build-context"
+          test -f "$BUILD_CONTEXT/infra/docker/Dockerfile.tooling"
+          docker buildx build \
+            --pull \
+            --no-cache \
+            --platform linux/amd64 \
+            --target tooling \
+            --file "$BUILD_CONTEXT/infra/docker/Dockerfile.tooling" \
+            --build-arg "SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}" \
+            --provenance=mode=max \
+            --output type=oci,dest=artifacts/docker/supply-chain/tooling.oci.tar \
+            "$BUILD_CONTEXT" 2>&1 | tee artifacts/docker/supply-chain/oci-build.txt
+          tar -xOf artifacts/docker/supply-chain/tooling.oci.tar index.json \
+            > artifacts/docker/supply-chain/oci-index.json
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const index = JSON.parse(readFileSync('artifacts/docker/supply-chain/oci-index.json', 'utf8'));
+          const hasProvenance = index.manifests?.some(
+            manifest => manifest.annotations?.['vnd.docker.reference.type'] === 'attestation-manifest',
+          );
+          if (!hasProvenance) throw new Error('OCI archive has no provenance attestation manifest.');
+          const metadata = {
+            schemaVersion: 1,
+            targetSha: process.env.GITHUB_SHA,
+            workflowRunId: process.env.GITHUB_RUN_ID,
+            sourceDateEpoch: Number(process.env.SOURCE_DATE_EPOCH),
+            deterministicImageId: process.env.DETERMINISTIC_IMAGE_ID,
+            platform: 'linux/amd64',
+            provenance: 'mode=max',
+            syntheticDataOnly: true,
+            productionCredentialsUsed: false,
+          };
+          writeFileSync(
+            'artifacts/docker/supply-chain/provenance-metadata.json',
+            `${JSON.stringify(metadata, null, 2)}\n`,
+          );
+          NODE
+        env:
+          SOURCE_DATE_EPOCH: ${{ steps.deterministic.outputs.source_date_epoch }}
+          DETERMINISTIC_IMAGE_ID: ${{ steps.deterministic.outputs.image_id }}
+      - name: Fail on HIGH or CRITICAL OCI vulnerabilities
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --mount "type=bind,src=${PWD}/artifacts/docker/supply-chain,dst=/scan,readonly" \
+            aquasec/trivy:0.67.2@sha256:e2b22eac59c02003d8749f5b8d9bd073b62e30fefaef5b7c8371204e0a4b0c08 \
+            image \
+            --input /scan/tooling.oci.tar \
+            --scanners vuln \
+            --severity HIGH,CRITICAL \
+            --exit-code 1 \
+            --format json \
+            2> >(tee artifacts/docker/supply-chain/trivy.stderr.txt >&2) \
+            | tee artifacts/docker/supply-chain/trivy.json
+      - name: Generate CycloneDX SBOM from the OCI archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --mount "type=bind,src=${PWD}/artifacts/docker/supply-chain,dst=/scan,readonly" \
+            anchore/syft:v1.38.0@sha256:825cad3a952c87676a6d07e9a3bb05ac9c401d598360070e970aa46d54c1727e \
+            scan oci-archive:/scan/tooling.oci.tar \
+            --output cyclonedx-json \
+            2> >(tee artifacts/docker/supply-chain/syft.stderr.txt >&2) \
+            | tee artifacts/docker/supply-chain/tooling-sbom.cdx.json
+          test -s artifacts/docker/supply-chain/tooling-sbom.cdx.json
+      - name: Stop project-scoped Docker resources
+        if: always()
+        shell: bash
+        run: npm run docker:down
+      - name: Remove deterministic build images
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          docker image rm \
+            "etkinlink/docker-tooling:determinism-a-${GITHUB_SHA}" \
+            "etkinlink/docker-tooling:determinism-b-${GITHUB_SHA}"
+      - name: Reject project-label orphans
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          containers="$(docker ps -aq --filter label=com.docker.compose.project=etkinlink-docker-test)"
+          networks="$(docker network ls -q --filter label=com.docker.compose.project=etkinlink-docker-test)"
+          volumes="$(docker volume ls -q --filter label=com.docker.compose.project=etkinlink-docker-test)"
+          printf 'containers=%s\nnetworks=%s\nvolumes=%s\n' "$containers" "$networks" "$volumes" \
+            | tee artifacts/docker/build/orphan-check.txt
+          test -z "$containers"
+          test -z "$networks"
+          test -z "$volumes"
+      - name: Finalize build and supply-chain checksums
+        id: finalize-evidence
+        if: always()
+        shell: bash
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          for profile in build supply-chain; do
+            directory="artifacts/docker/${profile}"
+            checksum_file="${RUNNER_TEMP}/docker-${profile}-SHA256SUMS"
+            mkdir -p "$directory"
+            printf '{"schemaVersion":1,"profile":"%s","targetSha":"%s","workflowRunId":"%s","jobStatus":"%s"}\n' \
+              "$profile" "$GITHUB_SHA" "$GITHUB_RUN_ID" "$JOB_STATUS" \
+              > "${directory}/workflow-metadata.json"
+            (
+              cd "$directory"
+              find . -type f ! -name SHA256SUMS -print0 \
+                | sort -z \
+                | xargs -0 sha256sum \
+                > "$checksum_file"
+            )
+            mv "$checksum_file" "${directory}/SHA256SUMS"
+          done
+          node infra/docker/scripts/assert-sanitized-evidence.mjs \
+            artifacts/docker/build artifacts/docker/supply-chain
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always() && steps.finalize-evidence.outcome == 'success'
+        with:
+          name: docker-build-supply-chain-${{ github.sha }}
+          path: |
+            artifacts/docker/build
+            artifacts/docker/supply-chain
+          if-no-files-found: error
+          retention-days: 30
+
+  docker-test:
+    name: Migration, RLS, restore and contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Initialize test evidence
+        if: always()
+        shell: bash
+        run: mkdir -p artifacts/docker/test
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Run canonical Supabase and Docker contract profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run docker:test 2>&1 | tee artifacts/docker/test/workflow.log
+      - name: Stop project-scoped Docker resources
+        if: always()
+        shell: bash
+        run: npm run docker:down
+      - name: Reject project-label orphans
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          containers="$(docker ps -aq --filter label=com.docker.compose.project=etkinlink-docker-test)"
+          networks="$(docker network ls -q --filter label=com.docker.compose.project=etkinlink-docker-test)"
+          volumes="$(docker volume ls -q --filter label=com.docker.compose.project=etkinlink-docker-test)"
+          printf 'containers=%s\nnetworks=%s\nvolumes=%s\n' "$containers" "$networks" "$volumes" \
+            | tee artifacts/docker/test/orphan-check.txt
+          test -z "$containers"
+          test -z "$networks"
+          test -z "$volumes"
+      - name: Finalize test checksums
+        id: finalize-evidence
+        if: always()
+        shell: bash
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          directory=artifacts/docker/test
+          checksum_file="${RUNNER_TEMP}/docker-test-SHA256SUMS"
+          mkdir -p "$directory"
+          printf '{"schemaVersion":1,"profile":"test","targetSha":"%s","workflowRunId":"%s","jobStatus":"%s"}\n' \
+            "$GITHUB_SHA" "$GITHUB_RUN_ID" "$JOB_STATUS" \
+            > "$directory/workflow-metadata.json"
+          (
+            cd "$directory"
+              find . -type f ! -name SHA256SUMS -print0 \
+                | sort -z \
+                | xargs -0 sha256sum \
+              > "$checksum_file"
+          )
+          mv "$checksum_file" "$directory/SHA256SUMS"
+          node infra/docker/scripts/assert-sanitized-evidence.mjs "$directory"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always() && steps.finalize-evidence.outcome == 'success'
+        with:
+          name: docker-test-${{ github.sha }}
+          path: artifacts/docker/test
+          if-no-files-found: error
+          retention-days: 30
+
+  docker-resilience:
+    name: Toxiproxy resilience
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Initialize resilience evidence
+        if: always()
+        shell: bash
+        run: mkdir -p artifacts/docker/resilience
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Run fault-injection profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run docker:resilience 2>&1 | tee artifacts/docker/resilience/workflow.log
+      - name: Stop project-scoped Docker resources
+        if: always()
+        shell: bash
+        run: npm run docker:down
+      - name: Reject project-label orphans
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          containers="$(docker ps -aq --filter label=com.docker.compose.project=etkinlink-docker-test)"
+          networks="$(docker network ls -q --filter label=com.docker.compose.project=etkinlink-docker-test)"
+          volumes="$(docker volume ls -q --filter label=com.docker.compose.project=etkinlink-docker-test)"
+          printf 'containers=%s\nnetworks=%s\nvolumes=%s\n' "$containers" "$networks" "$volumes" \
+            | tee artifacts/docker/resilience/orphan-check.txt
+          test -z "$containers"
+          test -z "$networks"
+          test -z "$volumes"
+      - name: Finalize resilience checksums
+        id: finalize-evidence
+        if: always()
+        shell: bash
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          directory=artifacts/docker/resilience
+          checksum_file="${RUNNER_TEMP}/docker-resilience-SHA256SUMS"
+          mkdir -p "$directory"
+          printf '{"schemaVersion":1,"profile":"resilience","targetSha":"%s","workflowRunId":"%s","jobStatus":"%s"}\n' \
+            "$GITHUB_SHA" "$GITHUB_RUN_ID" "$JOB_STATUS" \
+            > "$directory/workflow-metadata.json"
+          (
+            cd "$directory"
+              find . -type f ! -name SHA256SUMS -print0 \
+                | sort -z \
+                | xargs -0 sha256sum \
+              > "$checksum_file"
+          )
+          mv "$checksum_file" "$directory/SHA256SUMS"
+          node infra/docker/scripts/assert-sanitized-evidence.mjs "$directory"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always() && steps.finalize-evidence.outcome == 'success'
+        with:
+          name: docker-resilience-${{ github.sha }}
+          path: artifacts/docker/resilience
+          if-no-files-found: error
+          retention-days: 30
+
+  docker-load:
+    name: Bounded synthetic load
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Initialize load evidence
+        if: always()
+        shell: bash
+        run: mkdir -p artifacts/docker/load
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Run bounded local load profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run docker:load -- --vus 10 --duration 20s \
+            2>&1 | tee artifacts/docker/load/workflow.log
+      - name: Stop project-scoped Docker resources
+        if: always()
+        shell: bash
+        run: npm run docker:down
+      - name: Reject project-label orphans
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          containers="$(docker ps -aq --filter label=com.docker.compose.project=etkinlink-docker-test)"
+          networks="$(docker network ls -q --filter label=com.docker.compose.project=etkinlink-docker-test)"
+          volumes="$(docker volume ls -q --filter label=com.docker.compose.project=etkinlink-docker-test)"
+          printf 'containers=%s\nnetworks=%s\nvolumes=%s\n' "$containers" "$networks" "$volumes" \
+            | tee artifacts/docker/load/orphan-check.txt
+          test -z "$containers"
+          test -z "$networks"
+          test -z "$volumes"
+      - name: Finalize load checksums
+        id: finalize-evidence
+        if: always()
+        shell: bash
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          directory=artifacts/docker/load
+          checksum_file="${RUNNER_TEMP}/docker-load-SHA256SUMS"
+          mkdir -p "$directory"
+          printf '{"schemaVersion":1,"profile":"load","targetSha":"%s","workflowRunId":"%s","jobStatus":"%s"}\n' \
+            "$GITHUB_SHA" "$GITHUB_RUN_ID" "$JOB_STATUS" \
+            > "$directory/workflow-metadata.json"
+          (
+            cd "$directory"
+              find . -type f ! -name SHA256SUMS -print0 \
+                | sort -z \
+                | xargs -0 sha256sum \
+              > "$checksum_file"
+          )
+          mv "$checksum_file" "$directory/SHA256SUMS"
+          node infra/docker/scripts/assert-sanitized-evidence.mjs "$directory"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always() && steps.finalize-evidence.outcome == 'success'
+        with:
+          name: docker-load-${{ github.sha }}
+          path: artifacts/docker/load
+          if-no-files-found: error
+          retention-days: 30
+
+  docker-validation:
+    name: Docker validation gate
+    if: always()
+    needs:
+      - compose-build-security
+      - docker-test
+      - docker-resilience
+      - docker-load
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every Docker validation job
+        shell: bash
+        env:
+          BUILD_RESULT: ${{ needs.compose-build-security.result }}
+          TEST_RESULT: ${{ needs.docker-test.result }}
+          RESILIENCE_RESULT: ${{ needs.docker-resilience.result }}
+          LOAD_RESULT: ${{ needs.docker-load.result }}
+        run: |
+          set -euo pipefail
+          printf 'build=%s\ntest=%s\nresilience=%s\nload=%s\n' \
+            "$BUILD_RESULT" "$TEST_RESULT" "$RESILIENCE_RESULT" "$LOAD_RESULT"
+          test "$BUILD_RESULT" = success
+          test "$TEST_RESULT" = success
+          test "$RESILIENCE_RESULT" = success
+          test "$LOAD_RESULT" = success

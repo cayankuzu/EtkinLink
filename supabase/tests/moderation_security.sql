@@ -667,7 +667,8 @@ select is(
 select is(
   extensions.dblink_connect(
     'moderation_rate_lock',
-    'host=host.docker.internal port=54322'
+    'hostaddr=' || host(inet_server_addr())
+      || ' port=' || inet_server_port()::text
       || ' dbname=' || current_database()
       || ' user=postgres password=postgres'
   ),

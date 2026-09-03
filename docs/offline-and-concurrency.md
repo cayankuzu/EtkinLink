@@ -19,7 +19,7 @@ Offline data is a resilience aid, not a second source of truth. Supabase/Postgre
 - Automatic mutation retry is forbidden unless the server contract has an idempotency key.
 - Replay is owner-scoped and single-flight. Authentication loss, block, room leave, account delete or local logout cancels/purges pending work.
 - 401 triggers only the shared single-flight refresh path; validation, conflict, authorization and abort errors do not fall back to another provider.
-- Retry uses bounded backoff/jitter and honors `Retry-After`. Technical errors and message bodies are not shown to users or telemetry.
+- Retry uses bounded backoff/jitter and honors `Retry-After`. Technical stack traces, tokens, message bodies, private URLs and user identifiers are not persisted in error telemetry or shown to users.
 
 The current outbox stores attempt and next-attempt time and has age/size limits. A distinct durable dead-letter state and explicit cancel UI are not proven; this remains a reliability gap and must not be reported as complete until implemented and tested within the existing error/progress surface.
 
@@ -34,4 +34,4 @@ The current outbox stores attempt and next-attempt time and has age/size limits.
 7. Corrupt storage: invalid snapshot/outbox is deleted or recovered from bounded backup without crashing.
 8. Network transition: offline → captive/429/5xx → online respects retry schedule and never storms the origin.
 
-Evidence includes test command/output, timestamps, owner IDs replaced with stable test aliases, request/client IDs, server row count and exact commit SHA. Maestro/mock-only results do not replace two-device staging tests.
+Evidence includes test command/output, timestamps, owner IDs replaced with stable test aliases, request/client IDs, server row count and exact commit SHA. Unit/mock and Docker contract results are necessary but do not replace same-SHA two-device staging evidence; until it is attached, the concurrency/offline runtime gate remains `NO-GO`.

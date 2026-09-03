@@ -1,3 +1,9 @@
+import {
+  createRetryingGetFetch,
+  createTimeoutFetch,
+  RequestTimeoutError,
+  ResponseTooLargeError,
+} from '@shared/lib/network';
 import type { Event } from '@shared/types/domain';
 
 import {
@@ -10,6 +16,7 @@ import {
   getCachedRssEvent,
   parseEtkinlikIoDetailHtml,
   parseEtkinlikIoRss,
+  requestEtkinlikIoText,
 } from './rssEventService';
 
 const catalogHtml = `
@@ -35,6 +42,216 @@ const sample = `<?xml version="1.0" encoding="UTF-8"?>
     </item>
   </channel>
 </rss>`;
+
+describe('Etkinlik.io RSS transport security', () => {
+  it('rejects provider-controlled detail URLs outside the exact HTTPS allowlist', () => {
+    const malicious = sample.replaceAll(
+      'https://etkinlik.io/etkinlik/12345/istanbul-caz-konseri',
+      'https://evil.example/etkinlik/12345/istanbul-caz-konseri',
+    );
+
+    expect(parseEtkinlikIoRss(malicious)).toEqual([]);
+  });
+
+  it('rejects encoded detail path separators and dot segments', () => {
+    for (const unsafeSlug of ['%2fadmin', '%2e%2e', 'safe%2fadmin']) {
+      const unsafe = sample.replaceAll('istanbul-caz-konseri', unsafeSlug);
+      expect(parseEtkinlikIoRss(unsafe)).toEqual([]);
+    }
+  });
+
+  it('drops non-HTTPS, credentialed, fragmented, and oversized enclosure URLs', () => {
+    for (const unsafeImage of [
+      'http://cdn.example.com/event.png',
+      'https://user:pass@cdn.example.com/event.png',
+      'https://cdn.example.com/event.png#tracking',
+      `https://cdn.example.com/${'a'.repeat(2100)}.png`,
+    ]) {
+      const unsafe = sample.replace(
+        'https://cdn.example.com/event.png',
+        unsafeImage,
+      );
+      expect(parseEtkinlikIoRss(unsafe)[0]?.imageUrl).toBeNull();
+    }
+  });
+
+  it('fails closed above 50 parsed RSS items', () => {
+    const item = (id: number) => `<item>
+      <title>Etkinlik ${id}</title>
+      <pubDate>Fri, 07 Aug 2026 21:00:00 +0300</pubDate>
+      <link>https://etkinlik.io/etkinlik/${id}/etkinlik-${id}</link>
+    </item>`;
+    const feed = (count: number) =>
+      `<rss><channel>${Array.from({ length: count }, (_, index) =>
+        item(index + 1),
+      ).join('')}</channel></rss>`;
+
+    expect(parseEtkinlikIoRss(feed(50))).toHaveLength(50);
+    expect(() => parseEtkinlikIoRss(feed(51))).toThrow(/item siniri/);
+  });
+
+  it('rejects DTD and entity declarations before XML parsing', () => {
+    const xxe = `<?xml version="1.0"?>
+      <!DOCTYPE rss [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>
+      <rss><channel><item><title>&xxe;</title></item></channel></rss>`;
+    const entity = '<rss><!ENTITY unsafe "expanded"><channel /></rss>';
+
+    expect(() => parseEtkinlikIoRss(xxe)).toThrow(/DTD|entity/);
+    expect(() => parseEtkinlikIoRss(entity)).toThrow(/DTD|entity/);
+  });
+
+  it('uses GET-only no-redirect requests and rejects redirect responses', async () => {
+    const controller = new AbortController();
+    const fetcher = jest.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        expect(init?.method).toBe('GET');
+        expect(init?.redirect).toBe('error');
+        expect(init?.signal).toBe(controller.signal);
+        return new Response('', {
+          status: 302,
+          headers: { location: 'https://evil.example/private' },
+        });
+      },
+    );
+
+    await expect(
+      requestEtkinlikIoText(
+        'https://etkinlik.io/rss/sorgu?sehirIds=40',
+        'rss',
+        controller.signal,
+        fetcher as typeof fetch,
+      ),
+    ).rejects.toThrow(/redirect/);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects disallowed paths, query parameters, content types and oversized bodies', async () => {
+    const unusedFetcher = jest.fn(async () => new Response(sample));
+    for (const url of [
+      'http://etkinlik.io/rss/sorgu',
+      'https://evil.example/rss/sorgu',
+      'https://etkinlik.io/rss/sorgu?redirect=https://evil.example',
+      'https://etkinlik.io/admin',
+    ]) {
+      await expect(
+        requestEtkinlikIoText(
+          url,
+          url.endsWith('/admin') ? 'detail' : 'rss',
+          undefined,
+          unusedFetcher as typeof fetch,
+        ),
+      ).rejects.toThrow(/allowlist/);
+    }
+    expect(unusedFetcher).not.toHaveBeenCalled();
+
+    await expect(
+      requestEtkinlikIoText(
+        'https://etkinlik.io/rss/sorgu',
+        'rss',
+        undefined,
+        (async () =>
+          new Response(sample, {
+            headers: { 'content-type': 'text/html' },
+          })) as typeof fetch,
+      ),
+    ).rejects.toThrow(/icerik turu/);
+
+    await expect(
+      requestEtkinlikIoText(
+        'https://etkinlik.io/rss/sorgu',
+        'rss',
+        undefined,
+        (async () =>
+          new Response('', {
+            headers: {
+              'content-length': String(2 * 1024 * 1024 + 1),
+              'content-type': 'application/rss+xml',
+            },
+          })) as typeof fetch,
+      ),
+    ).rejects.toBeInstanceOf(ResponseTooLargeError);
+  });
+
+  it('honors Retry-After and bounds 429/5xx retries for safe GET requests', async () => {
+    const responses = [
+      new Response('', { status: 429, headers: { 'retry-after': '2' } }),
+      new Response('', { status: 503 }),
+      new Response(sample, {
+        status: 200,
+        headers: { 'content-type': 'application/rss+xml; charset=utf-8' },
+      }),
+    ];
+    const delays: number[] = [];
+    const rawFetch = jest.fn(async () => {
+      const response = responses.shift();
+      if (!response) throw new Error('Unexpected fetch attempt.');
+      return response;
+    }) as unknown as typeof fetch;
+    const retryingFetch = createRetryingGetFetch(rawFetch, {
+      attempts: 3,
+      now: () => Date.parse('2026-08-31T12:00:00Z'),
+      random: () => 0.5,
+      sleep: milliseconds => {
+        delays.push(milliseconds);
+        return Promise.resolve();
+      },
+    });
+
+    await expect(
+      requestEtkinlikIoText(
+        'https://etkinlik.io/rss/sorgu',
+        'rss',
+        undefined,
+        retryingFetch,
+      ),
+    ).resolves.toContain('<rss');
+    expect(rawFetch).toHaveBeenCalledTimes(3);
+    expect(delays).toEqual([2000, 500]);
+
+    const unavailable = jest.fn(async () => new Response('', { status: 503 }));
+    await expect(
+      requestEtkinlikIoText(
+        'https://etkinlik.io/rss/sorgu',
+        'rss',
+        undefined,
+        createRetryingGetFetch(unavailable as unknown as typeof fetch, {
+          attempts: 3,
+          random: () => 0,
+          sleep: () => Promise.resolve(),
+        }),
+      ),
+    ).rejects.toMatchObject({ status: 503 });
+    expect(unavailable).toHaveBeenCalledTimes(3);
+  });
+
+  it('aborts a stalled request at the bounded timeout', async () => {
+    const stalledFetch = (async (
+      _input: RequestInfo | URL,
+      init?: RequestInit,
+    ) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener(
+          'abort',
+          () => {
+            const error = new Error('aborted');
+            error.name = 'AbortError';
+            reject(error);
+          },
+          { once: true },
+        );
+      })) as typeof fetch;
+    const timeoutFetch = createTimeoutFetch(stalledFetch, 5);
+
+    await expect(
+      requestEtkinlikIoText(
+        'https://etkinlik.io/rss/sorgu',
+        'rss',
+        undefined,
+        createRetryingGetFetch(timeoutFetch, { attempts: 1 }),
+      ),
+    ).rejects.toBeInstanceOf(RequestTimeoutError);
+  });
+});
 
 describe('Etkinlik.io RSS adaptörü', () => {
   it('şehir ve kategori seçimlerini doğrudan RSS sorgu parametrelerine yazar', () => {

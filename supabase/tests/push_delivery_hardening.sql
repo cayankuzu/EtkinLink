@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(33);
+select plan(50);
 
 select ok(
   not has_function_privilege(
@@ -56,6 +56,48 @@ select ok(
     'EXECUTE'
   ),
   'Yalnız service role invalid-token receipt sonucunu kalıcılaştırabilir'
+);
+select ok(
+  not has_function_privilege(
+    'authenticated',
+    'public.persist_push_receipt_result(uuid,integer,uuid,text,text,text)',
+    'EXECUTE'
+  ),
+  'Authenticated kullanıcı lease korumalı receipt sonucu yazamaz'
+);
+select ok(
+  has_function_privilege(
+    'service_role',
+    'public.persist_push_receipt_result(uuid,integer,uuid,text,text,text)',
+    'EXECUTE'
+  ),
+  'Yalnız service role lease korumalı receipt sonucu yazabilir'
+);
+
+select ok(
+  (
+    select pg_catalog.format_type(attribute.atttypid, attribute.atttypmod)
+    from pg_catalog.pg_attribute as attribute
+    where attribute.attrelid = 'public.notification_events'::regclass
+      and attribute.attname = 'kind'
+      and not attribute.attisdropped
+  ) = 'text',
+  'Durable outbox kind alanı mevcut text ve CHECK sözleşmesini kullanır'
+);
+select ok(
+  (
+    select pg_get_constraintdef(constraint_row.oid)
+    from pg_constraint as constraint_row
+    where constraint_row.conrelid = 'public.notification_events'::regclass
+      and constraint_row.conname = 'notification_events_kind'
+  ) like '%blocked%'
+  and (
+    select pg_get_constraintdef(constraint_row.oid)
+    from pg_constraint as constraint_row
+    where constraint_row.conrelid = 'public.notification_events'::regclass
+      and constraint_row.conname = 'notification_events_kind'
+  ) like '%unblocked%',
+  'Durable outbox CHECK mevcut blocked/unblocked sözleşmesiyle uyumludur'
 );
 
 select is(
@@ -268,6 +310,56 @@ values
     null
   );
 
+select lives_ok(
+  $$
+    insert into public.notification_events (
+      id,
+      user_id,
+      kind,
+      title,
+      body,
+      channel_id,
+      dedupe_key,
+      delivery_status
+    )
+    values
+      (
+        '40000000-0000-4000-8000-000000000055',
+        '40000000-0000-4000-8000-000000000040',
+        'blocked',
+        'Blocked contract test',
+        'Existing blocked notification contract',
+        'matches',
+        'push-hardening-blocked-contract',
+        'cancelled'
+      ),
+      (
+        '40000000-0000-4000-8000-000000000056',
+        '40000000-0000-4000-8000-000000000040',
+        'unblocked',
+        'Unblocked contract test',
+        'Existing unblocked notification contract',
+        'matches',
+        'push-hardening-unblocked-contract',
+        'cancelled'
+      )
+  $$,
+  'Mevcut blocked/unblocked türleri durable outbox tarafından kabul edilir'
+);
+select is(
+  (
+    select count(*)
+    from public.notification_events
+    where id in (
+      '40000000-0000-4000-8000-000000000055',
+      '40000000-0000-4000-8000-000000000056'
+    )
+      and kind in ('blocked', 'unblocked')
+  ),
+  2::bigint,
+  'Blocked/unblocked contract onarımı yeni notification türü üretmez'
+);
+
 insert into public.notification_deliveries (
   id,
   notification_event_id,
@@ -440,6 +532,187 @@ select throws_ok(
   '42501',
   'Push replay audit kayıtları değiştirilemez.',
   'Replay audit kaydı immutable kalır'
+);
+
+insert into public.notification_events (
+  id,
+  user_id,
+  kind,
+  title,
+  body,
+  channel_id,
+  dedupe_key,
+  delivery_status,
+  attempt_count
+)
+values
+  (
+    '40000000-0000-4000-8000-000000000057',
+    '40000000-0000-4000-8000-000000000040',
+    'system',
+    'Receipt lease test',
+    'Receipt lease and retry test',
+    'system',
+    'push-hardening-receipt-lease',
+    'sent',
+    1
+  ),
+  (
+    '40000000-0000-4000-8000-000000000059',
+    '40000000-0000-4000-8000-000000000040',
+    'system',
+    'Receipt DLQ test',
+    'Receipt bounded attempt test',
+    'system',
+    'push-hardening-receipt-dlq',
+    'sent',
+    1
+  );
+
+insert into public.notification_deliveries (
+  id,
+  notification_event_id,
+  push_token_id,
+  status,
+  expo_ticket_id,
+  receipt_status,
+  receipt_attempt_count,
+  receipt_next_attempt_at
+)
+values
+  (
+    '40000000-0000-4000-8000-000000000058',
+    '40000000-0000-4000-8000-000000000057',
+    '40000000-0000-4000-8000-000000000048',
+    'sent',
+    'receipt-lease-ticket',
+    'pending',
+    0,
+    now() - interval '1 minute'
+  ),
+  (
+    '40000000-0000-4000-8000-00000000005a',
+    '40000000-0000-4000-8000-000000000059',
+    '40000000-0000-4000-8000-000000000048',
+    'sent',
+    'receipt-dlq-ticket',
+    'retryable',
+    4,
+    now() - interval '1 minute'
+  );
+
+select is(
+  jsonb_array_length(public.claim_pending_push_receipts(1)),
+  1,
+  'Receipt claim tek uygun kaydı alır'
+);
+select ok(
+  (
+    select receipt_lease_id is not null
+      and receipt_next_attempt_at > now() + interval '1 minute 50 seconds'
+      and receipt_next_attempt_at <= now() + interval '2 minutes 10 seconds'
+    from public.notification_deliveries
+    where id = '40000000-0000-4000-8000-000000000058'
+  ),
+  'Receipt claim benzersiz iki dakikalık lease oluşturur'
+);
+select is(
+  public.persist_push_receipt_result(
+    '40000000-0000-4000-8000-000000000058',
+    0,
+    '40000000-0000-4000-8000-0000000000ff',
+    'retryable',
+    'EXPO_TRANSIENT_FAILURE',
+    null
+  ),
+  false,
+  'Eski veya yanlış receipt lease sonucu reddedilir'
+);
+select is(
+  (
+    select receipt_attempt_count
+    from public.notification_deliveries
+    where id = '40000000-0000-4000-8000-000000000058'
+  ),
+  0::smallint,
+  'Reddedilen lease receipt attempt sayısını tüketmez'
+);
+select is(
+  public.persist_push_receipt_result(
+    '40000000-0000-4000-8000-000000000058',
+    0,
+    (
+      select receipt_lease_id
+      from public.notification_deliveries
+      where id = '40000000-0000-4000-8000-000000000058'
+    ),
+    'retryable',
+    'EXPO_TRANSIENT_FAILURE',
+    null
+  ),
+  true,
+  'Lease sahibi transient Expo hatasını atomik kalıcılaştırır'
+);
+select ok(
+  (
+    select receipt_status = 'retryable'
+      and receipt_attempt_count = 1
+      and receipt_lease_id is null
+      and receipt_checked_at is null
+      and receipt_next_attempt_at > now() + interval '4 minutes'
+      and receipt_next_attempt_at <= now() + interval '6 minutes'
+    from public.notification_deliveries
+    where id = '40000000-0000-4000-8000-000000000058'
+  ),
+  'Transient provider hatası bounded attempt ve DB backoff üretir'
+);
+
+select is(
+  jsonb_array_length(public.claim_pending_push_receipts(1)),
+  1,
+  'Son receipt denemesi ayrı lease ile claim edilir'
+);
+select is(
+  public.persist_push_receipt_result(
+    '40000000-0000-4000-8000-00000000005a',
+    4,
+    (
+      select receipt_lease_id
+      from public.notification_deliveries
+      where id = '40000000-0000-4000-8000-00000000005a'
+    ),
+    'retryable',
+    'EXPO_TRANSIENT_FAILURE',
+    null
+  ),
+  true,
+  'Beşinci transient receipt sonucu atomik olarak terminale taşınır'
+);
+select ok(
+  (
+    select receipt_status = 'permanent_failure'
+      and receipt_attempt_count = 5
+      and receipt_lease_id is null
+      and receipt_next_attempt_at is null
+      and receipt_checked_at is not null
+      and receipt_error_code = 'MAX_RECEIPT_ATTEMPTS_EXHAUSTED'
+    from public.notification_deliveries
+    where id = '40000000-0000-4000-8000-00000000005a'
+  ),
+  'Exhausted receipt logical DLQ durumunda kalır'
+);
+select ok(
+  (
+    public.query_terminal_notification_delivery(
+      '40000000-0000-4000-8000-000000000059'
+    ) ->> 'isTerminal'
+  )::boolean,
+  'DLQ teslimatı mevcut PII-safe terminal sorguda görünür'
+);
+select is(
+  jsonb_array_length(public.claim_pending_push_receipts(300)),
+  0,
+  'DLQ teslimatı yeniden otomatik claim edilmez'
 );
 
 select is(

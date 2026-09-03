@@ -2,6 +2,11 @@ name: Mobil staging E2E
 
 on:
   workflow_dispatch:
+    inputs:
+      target_sha:
+        description: "Exact 40-character commit SHA from origin/main"
+        required: true
+        type: string
   schedule:
     - cron: "30 2 * * 1-5"
 
@@ -13,12 +18,43 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  validate-target:
+    runs-on: ubuntu-latest
+    outputs:
+      target_sha: ${{ steps.target.outputs.target_sha }}
+    steps:
+      - id: target
+        name: Validate immutable target SHA
+        shell: bash
+        env:
+          REQUESTED_TARGET_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.target_sha || github.sha }}
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$REQUESTED_TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$WORKFLOW_SHA" = "$REQUESTED_TARGET_SHA"
+          echo "target_sha=$REQUESTED_TARGET_SHA" >> "$GITHUB_OUTPUT"
+
   android-maestro:
+    needs: validate-target
     runs-on: ubuntu-latest
     timeout-minutes: 60
     environment: staging-e2e
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.validate-target.outputs.target_sha }}
+          fetch-depth: 0
+      - name: Verify immutable main commit and clean tree
+        shell: bash
+        env:
+          TARGET_SHA: ${{ needs.validate-target.outputs.target_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$TARGET_SHA" origin/main
+          test -z "$(git status --porcelain --untracked-files=all)"
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
@@ -104,6 +140,34 @@ jobs:
             adb shell svc data enable
             maestro test mobile/.maestro/offline/03-reconnect.yaml \
               -e E2E_OFFLINE_MESSAGE="$E2E_OFFLINE_MESSAGE"
+      - name: Package immutable Maestro evidence metadata and checksums
+        if: always()
+        shell: bash
+        env:
+          TARGET_SHA: ${{ needs.validate-target.outputs.target_sha }}
+          EVIDENCE_JOB: android-maestro
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/e2e/android-maestro
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from 'node:fs';
+          writeFileSync('artifacts/e2e/android-maestro/metadata.json', JSON.stringify({
+            schemaVersion: 1,
+            targetSha: process.env.TARGET_SHA,
+            runId: Number(process.env.GITHUB_RUN_ID),
+            runAttempt: Number(process.env.GITHUB_RUN_ATTEMPT),
+            workflow: '.github/workflows/mobile-e2e.yml',
+            job: process.env.EVIDENCE_JOB,
+          }, null, 2));
+          NODE
+          test -f mobile/e2e-results.xml
+          test -d mobile/e2e-debug
+          find mobile/e2e-results.xml mobile/e2e-debug -type f -print0 \
+            | sort -z \
+            | xargs -0 --no-run-if-empty sha256sum \
+            > artifacts/e2e/android-maestro/SHA256SUMS
+          sha256sum artifacts/e2e/android-maestro/metadata.json \
+            >> artifacts/e2e/android-maestro/SHA256SUMS
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
@@ -111,10 +175,13 @@ jobs:
           path: |
             mobile/e2e-results.xml
             mobile/e2e-debug
-          if-no-files-found: warn
+            artifacts/e2e/android-maestro/metadata.json
+            artifacts/e2e/android-maestro/SHA256SUMS
+          if-no-files-found: error
           retention-days: 30
 
   backend-critical-flows:
+    needs: validate-target
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: staging-e2e
@@ -123,6 +190,20 @@ jobs:
         working-directory: mobile
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.validate-target.outputs.target_sha }}
+          fetch-depth: 0
+      - name: Verify immutable main commit and clean tree
+        shell: bash
+        working-directory: .
+        env:
+          TARGET_SHA: ${{ needs.validate-target.outputs.target_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$TARGET_SHA" origin/main
+          test -z "$(git status --porcelain --untracked-files=all)"
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
@@ -137,10 +218,39 @@ jobs:
           STAGING_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.STAGING_SUPABASE_PUBLISHABLE_KEY }}
           STAGING_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.STAGING_SUPABASE_SERVICE_ROLE_KEY }}
           STAGING_E2E_EMAIL_DOMAIN: ${{ vars.STAGING_E2E_EMAIL_DOMAIN }}
+      - name: Package immutable backend evidence metadata and checksums
+        if: always()
+        shell: bash
+        working-directory: .
+        env:
+          TARGET_SHA: ${{ needs.validate-target.outputs.target_sha }}
+          EVIDENCE_JOB: backend-critical-flows
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/e2e/backend-critical-flows
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from 'node:fs';
+          writeFileSync('artifacts/e2e/backend-critical-flows/metadata.json', JSON.stringify({
+            schemaVersion: 1,
+            targetSha: process.env.TARGET_SHA,
+            runId: Number(process.env.GITHUB_RUN_ID),
+            runAttempt: Number(process.env.GITHUB_RUN_ATTEMPT),
+            workflow: '.github/workflows/mobile-e2e.yml',
+            job: process.env.EVIDENCE_JOB,
+          }, null, 2));
+          NODE
+          test -f mobile/artifacts/staging-critical-e2e.json
+          sha256sum \
+            mobile/artifacts/staging-critical-e2e.json \
+            artifacts/e2e/backend-critical-flows/metadata.json \
+            > artifacts/e2e/backend-critical-flows/SHA256SUMS
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: staging-critical-backend-e2e-evidence
-          path: mobile/artifacts/staging-critical-e2e.json
+          path: |
+            mobile/artifacts/staging-critical-e2e.json
+            artifacts/e2e/backend-critical-flows/metadata.json
+            artifacts/e2e/backend-critical-flows/SHA256SUMS
           if-no-files-found: error
           retention-days: 30

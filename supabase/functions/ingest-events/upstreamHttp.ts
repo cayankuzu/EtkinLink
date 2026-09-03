@@ -1,16 +1,55 @@
-export const EVENTS_API_URL = "https://etkinlik.io/api/v2/events";
+export const ETKINLIK_API_BASE_URL = "https://etkinlik.io/api/v2";
+export const EVENTS_API_URL = `${ETKINLIK_API_BASE_URL}/events`;
 export const MAX_UPSTREAM_RESPONSE_BYTES = 2 * 1024 * 1024;
 
 const MAX_ATTEMPTS = 3;
 const REQUEST_TIMEOUT_MS = 15_000;
 const BASE_RETRY_DELAY_MS = 250;
 const MAX_RETRY_DELAY_MS = 10_000;
-const ALLOWED_QUERY_PARAMETERS = new Set([
-  "skip",
-  "sort_by",
-  "start_gte",
-  "take",
+const ALLOWED_PATHS = new Set([
+  "/api/v2/categories",
+  "/api/v2/cities",
+  "/api/v2/events",
+  "/api/v2/formats",
 ]);
+const MAX_UPSTREAM_URL_LENGTH = 2_048;
+const EVENT_LIST_QUERY_VALIDATORS = new Map<string, (value: string) => boolean>(
+  [
+    ["skip", (value) => /^(?:0|[1-9]\d{0,6})$/u.test(value)],
+    ["take", (value) => /^(?:[1-9]|[1-4]\d|50)$/u.test(value)],
+    ["sort_by", (value) => /^(?:recent|upcoming|updated)$/u.test(value)],
+    ["city_ids", isBoundedIdList],
+    ["format_ids", isBoundedIdList],
+    ["start_gte", isBoundedTimestamp],
+    ["end_lte", isBoundedTimestamp],
+  ],
+);
+
+function isBoundedIdList(value: string): boolean {
+  if (value.length > 109) return false;
+  const ids = value.split(",");
+  return ids.length >= 1 && ids.length <= 10 &&
+    ids.every((id) => /^[1-9]\d{0,9}$/u.test(id));
+}
+
+function isBoundedTimestamp(value: string): boolean {
+  if (value.length < 10 || value.length > 40) return false;
+  if (
+    !/^\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})?)?$/u
+      .test(value)
+  ) return false;
+  return Number.isFinite(Date.parse(value.replace(" ", "T")));
+}
+
+function hasAllowedEventListQuery(candidate: URL): boolean {
+  const seen = new Set<string>();
+  for (const [key, value] of candidate.searchParams) {
+    const validator = EVENT_LIST_QUERY_VALIDATORS.get(key);
+    if (!validator || seen.has(key) || !validator(value)) return false;
+    seen.add(key);
+  }
+  return true;
+}
 
 export class UpstreamHttpError extends Error {
   readonly status: number | null;
@@ -51,7 +90,7 @@ function isRetryableStatus(status: number): boolean {
   return status === 429 || (status >= 500 && status <= 599);
 }
 
-export function assertAllowedEventsUrl(input: string | URL): URL {
+export function assertAllowedEtkinlikApiUrl(input: string | URL): URL {
   let candidate: URL;
   try {
     candidate = new URL(input.toString());
@@ -59,24 +98,61 @@ export function assertAllowedEventsUrl(input: string | URL): URL {
     throw new UpstreamHttpError("UPSTREAM_URL_NOT_ALLOWED");
   }
 
-  const allowed = new URL(EVENTS_API_URL);
-  const hasUnexpectedQueryParameter = [...candidate.searchParams.keys()].some(
-    (key) => !ALLOWED_QUERY_PARAMETERS.has(key),
+  const allowed = new URL(ETKINLIK_API_BASE_URL);
+  const isEventDetail = /^\/api\/v2\/events\/[1-9]\d*$/u.test(
+    candidate.pathname,
   );
+  const isAllowedPath = ALLOWED_PATHS.has(candidate.pathname) || isEventDetail;
+  const isEventList = candidate.pathname === "/api/v2/events";
+  const hasAllowedQuery = isEventList
+    ? hasAllowedEventListQuery(candidate)
+    : candidate.search === "";
   if (
+    candidate.toString().length > MAX_UPSTREAM_URL_LENGTH ||
     candidate.protocol !== "https:" ||
     candidate.origin !== allowed.origin ||
-    candidate.pathname !== allowed.pathname ||
+    !isAllowedPath ||
     candidate.username !== "" ||
     candidate.password !== "" ||
     candidate.hash !== "" ||
-    hasUnexpectedQueryParameter
+    !hasAllowedQuery
   ) {
     throw new UpstreamHttpError("UPSTREAM_URL_NOT_ALLOWED");
   }
 
   return candidate;
 }
+
+export function parseEtkinlikPublicEventUrl(
+  input: unknown,
+): { eventId: number; url: string } | null {
+  if (typeof input !== "string" || input.length < 1 || input.length > 1_024) {
+    return null;
+  }
+  try {
+    const candidate = new URL(input);
+    const match = candidate.pathname.match(
+      /^\/etkinlik\/([1-9]\d{0,14})(?:\/[a-z0-9](?:[a-z0-9-]{0,198}[a-z0-9])?)?\/?$/iu,
+    );
+    if (
+      candidate.protocol !== "https:" ||
+      candidate.origin !== "https://etkinlik.io" ||
+      candidate.username !== "" ||
+      candidate.password !== "" ||
+      candidate.search !== "" ||
+      candidate.hash !== "" ||
+      !match
+    ) return null;
+    const eventId = Number(match[1]);
+    if (!Number.isSafeInteger(eventId)) return null;
+    return { eventId, url: candidate.toString() };
+  } catch {
+    return null;
+  }
+}
+
+// Backward-compatible name used by the ingestion contract tests.
+export const assertAllowedEventsUrl = assertAllowedEtkinlikApiUrl;
 
 export function parseRetryAfterMs(
   value: string | null,
@@ -185,7 +261,13 @@ export async function fetchBoundedJson(
   dependencies: UpstreamHttpDependencies = {},
   options: UpstreamHttpOptions = {},
 ): Promise<unknown> {
-  const url = assertAllowedEventsUrl(input);
+  const url = assertAllowedEtkinlikApiUrl(input);
+  if (
+    (init.method !== undefined && init.method.toUpperCase() !== "GET") ||
+    init.body !== undefined && init.body !== null
+  ) {
+    throw new UpstreamHttpError("UPSTREAM_METHOD_NOT_ALLOWED");
+  }
   const fetchImpl = dependencies.fetch ?? fetch;
   const now = dependencies.now ?? Date.now;
   const random = dependencies.random ?? Math.random;

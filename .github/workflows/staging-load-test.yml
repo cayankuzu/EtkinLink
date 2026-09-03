@@ -3,6 +3,10 @@ name: Staging ölçek testi
 on:
   workflow_dispatch:
     inputs:
+      target_sha:
+        description: "Exact 40-character commit SHA from origin/main"
+        required: true
+        type: string
       confirmation:
         description: "Hedef <10K için staging-load, 10K için staging-10k yaz"
         required: true
@@ -19,7 +23,25 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  validate-target:
+    runs-on: ubuntu-latest
+    outputs:
+      target_sha: ${{ steps.target.outputs.target_sha }}
+    steps:
+      - id: target
+        name: Validate immutable target SHA
+        shell: bash
+        env:
+          REQUESTED_TARGET_SHA: ${{ inputs.target_sha }}
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$REQUESTED_TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$WORKFLOW_SHA" = "$REQUESTED_TARGET_SHA"
+          echo "target_sha=$REQUESTED_TARGET_SHA" >> "$GITHUB_OUTPUT"
+
   staged-load-test:
+    needs: validate-target
     if: >-
       (fromJSON(inputs.target_vus) < 10000 && inputs.confirmation == 'staging-load') ||
       (fromJSON(inputs.target_vus) == 10000 && inputs.confirmation == 'staging-10k')
@@ -38,6 +60,19 @@ jobs:
       MATCH_TEST_USER_ID: ${{ secrets.STAGING_MATCH_TEST_USER_ID }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.validate-target.outputs.target_sha }}
+          fetch-depth: 0
+      - name: Verify immutable main commit and clean tree
+        shell: bash
+        env:
+          TARGET_SHA: ${{ needs.validate-target.outputs.target_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$TARGET_SHA" origin/main
+          test -z "$(git status --porcelain --untracked-files=all)"
       - uses: grafana/setup-k6-action@db07bd9765aac508ef18982e52ab937fe633a065 # v1.2.1
       - name: Düşük ölçek güven kapısı
         shell: bash
@@ -61,10 +96,39 @@ jobs:
           set -euo pipefail
           k6 run load-tests/staging-mixed.k6.js
           mv artifacts/staging-mixed-load-summary.json "artifacts/load-target-${TARGET_VUS}vu.json"
+      - name: Package immutable load evidence metadata and checksums
+        if: always()
+        shell: bash
+        env:
+          TARGET_SHA: ${{ needs.validate-target.outputs.target_sha }}
+          TARGET_VUS: ${{ inputs.target_vus }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from 'node:fs';
+          writeFileSync('artifacts/load-evidence-metadata.json', JSON.stringify({
+            schemaVersion: 1,
+            targetSha: process.env.TARGET_SHA,
+            runId: Number(process.env.GITHUB_RUN_ID),
+            runAttempt: Number(process.env.GITHUB_RUN_ATTEMPT),
+            workflow: '.github/workflows/staging-load-test.yml',
+            job: 'staged-load-test',
+            targetVus: Number(process.env.TARGET_VUS),
+          }, null, 2));
+          NODE
+          test -f artifacts/load-low-25vu.json
+          test -f artifacts/load-medium-250vu.json
+          test -f "artifacts/load-target-${TARGET_VUS}vu.json"
+          find artifacts -maxdepth 1 -type f -name '*.json' -print0 \
+            | sort -z \
+            | xargs -0 --no-run-if-empty sha256sum \
+            > artifacts/SHA256SUMS
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: staging-mixed-load-evidence-${{ inputs.target_vus }}vu
-          path: artifacts/*.json
+          path: |
+            artifacts/*.json
+            artifacts/SHA256SUMS
           if-no-files-found: error
           retention-days: 30

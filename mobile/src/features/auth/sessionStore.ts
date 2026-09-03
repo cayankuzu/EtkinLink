@@ -2,7 +2,10 @@ import { clearEventFeedSnapshot } from '@features/events/eventFeedSnapshot';
 import { clearEventFeedCache } from '@features/events/eventService';
 import { releaseProfilePhotoCleanupMemory } from '@features/profile/profileService';
 import { purgeAllOutbox, purgeOutboxForOwner } from '@shared/lib/chatOutbox';
-import { unregisterCurrentPushToken } from '@shared/lib/pushNotifications';
+import {
+  tombstoneCurrentPushRegistration,
+  unregisterCurrentPushToken,
+} from '@shared/lib/pushNotifications';
 import { queryClient } from '@shared/lib/queryClient';
 import { supabase } from '@shared/lib/supabase';
 import { captureAppError } from '@shared/lib/telemetry';
@@ -93,6 +96,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   async setSession(session) {
     if (!session) {
       const ownerId = get().session?.user.id ?? null;
+      await runLocalCleanup('session.cleanup.push_tombstone', () =>
+        tombstoneCurrentPushRegistration('session_loss'),
+      );
       set({
         phase: 'signedOut',
         session: null,
@@ -100,6 +106,13 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       });
       await clearLocalSessionData(ownerId);
       return;
+    }
+
+    const previousOwnerId = get().session?.user.id ?? null;
+    if (previousOwnerId && previousOwnerId !== session.user.id) {
+      await runLocalCleanup('session.cleanup.push_account_switch', () =>
+        tombstoneCurrentPushRegistration('account_switch'),
+      );
     }
 
     // Registration already collects the complete profile before the

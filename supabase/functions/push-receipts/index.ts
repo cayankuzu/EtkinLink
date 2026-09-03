@@ -42,6 +42,7 @@ type PendingDelivery = {
   expo_ticket_id: string;
   push_token_id: string;
   receipt_attempt_count: number | null;
+  receipt_lease_id: string;
 };
 
 export type PushReceiptDependencies = {
@@ -67,11 +68,6 @@ export function classifyReceipt(receipt: Receipt): ReceiptState {
   if (errorCode === "DeviceNotRegistered") return "invalid_token";
   if (RETRYABLE_EXPO_ERRORS.has(errorCode)) return "retryable";
   return "permanent_failure";
-}
-
-export function nextReceiptAttempt(attemptCount: number): string {
-  const delayMinutes = Math.min(5 * 2 ** Math.max(attemptCount - 1, 0), 60);
-  return new Date(Date.now() + delayMinutes * 60_000).toISOString();
 }
 
 function boundedOptionalString(
@@ -140,28 +136,40 @@ function normalizeReceiptPayload(
   return normalized;
 }
 
-async function persistPermanentReceiptFetchFailure(
+async function persistReceiptResult(
+  admin: SupabaseClient,
+  delivery: PendingDelivery,
+  resultStatus: ReceiptState,
+  errorCode: string | null,
+  errorMessage: string | null,
+): Promise<boolean> {
+  const { data, error } = await admin.rpc("persist_push_receipt_result", {
+    target_delivery_id: delivery.id,
+    expected_receipt_attempt_count: delivery.receipt_attempt_count ?? 0,
+    expected_receipt_lease_id: delivery.receipt_lease_id,
+    result_status: resultStatus,
+    result_error_code: errorCode,
+    result_error_message: errorMessage,
+  });
+  return error === null && data === true;
+}
+
+async function persistReceiptFetchFailure(
   admin: SupabaseClient,
   deliveries: PendingDelivery[],
+  resultStatus: "retryable" | "permanent_failure",
   errorCode: string,
 ): Promise<boolean> {
   for (const delivery of deliveries) {
-    const nextAttemptCount = Math.min(
-      (delivery.receipt_attempt_count ?? 0) + 1,
-      MAX_RECEIPT_ATTEMPTS,
-    );
-    const { error } = await admin
-      .from("notification_deliveries")
-      .update({
-        receipt_status: "permanent_failure",
-        receipt_attempt_count: nextAttemptCount,
-        receipt_next_attempt_at: null,
-        receipt_checked_at: new Date().toISOString(),
-        receipt_error_code: errorCode,
-        error_message: null,
-      })
-      .eq("id", delivery.id);
-    if (error) return false;
+    if (
+      !await persistReceiptResult(
+        admin,
+        delivery,
+        resultStatus,
+        errorCode,
+        null,
+      )
+    ) return false;
   }
   return true;
 }
@@ -267,22 +275,28 @@ export async function handlePushReceipts(
     });
     receipts = normalizeReceiptPayload(payload, requestedIds);
   } catch (error) {
-    const transient = error instanceof ExpoHttpError &&
-      (error.status === null || isTransientExpoStatus(error.status));
-    if (!transient) {
-      const errorCode = error instanceof ExpoHttpError && error.status !== null
-        ? `EXPO_HTTP_${error.status}`
-        : "EXPO_PROTOCOL_ERROR";
-      const persisted = await persistPermanentReceiptFetchFailure(
-        admin,
-        deliveries,
-        errorCode,
-      );
-      if (!persisted) {
-        return jsonResponse(500, {
-          error: "Kalıcı Expo receipt hatası kaydedilemedi.",
-        });
-      }
+    // A syntactically malformed or oversized successful response is a
+    // provider protocol failure, not proof of a permanent delivery failure.
+    // Consume one durable attempt and let the DB-owned bounded backoff retry.
+    const transient = !(error instanceof ExpoHttpError) ||
+      error.status === null || isTransientExpoStatus(error.status);
+    const errorCode = !(error instanceof ExpoHttpError)
+      ? "EXPO_PROTOCOL_ERROR"
+      : transient
+      ? "EXPO_TRANSIENT_FAILURE"
+      : error.status !== null
+      ? `EXPO_HTTP_${error.status}`
+      : "EXPO_TRANSIENT_FAILURE";
+    const persisted = await persistReceiptFetchFailure(
+      admin,
+      deliveries,
+      transient ? "retryable" : "permanent_failure",
+      errorCode,
+    );
+    if (!persisted) {
+      return jsonResponse(500, {
+        error: "Expo receipt hatası lease sahibi tarafından kaydedilemedi.",
+      });
     }
     return jsonResponse(502, { error: "Expo receipt servisine ulaşılamadı." });
   }
@@ -303,44 +317,20 @@ export async function handlePushReceipts(
     const exhausted = state === "retryable" &&
       nextAttemptCount >= MAX_RECEIPT_ATTEMPTS;
     const finalState: ReceiptState = exhausted ? "permanent_failure" : state;
-    const isFinal = finalState !== "retryable";
     const errorCode = receipt?.details?.error ??
       (receipt ? null : "RECEIPT_NOT_READY");
 
-    if (finalState === "invalid_token") {
-      const { data: persisted, error: persistError } = await admin.rpc(
-        "persist_invalid_push_receipt",
-        {
-          target_delivery_id: delivery.id,
-          expected_receipt_attempt_count: delivery.receipt_attempt_count ?? 0,
-          result_error_code: errorCode,
-          result_error_message: receipt?.message?.slice(0, 500) ?? null,
-        },
-      );
-      if (persistError || persisted !== true) {
-        return jsonResponse(500, {
-          error: "Geçersiz push token sonucu atomik olarak kaydedilemedi.",
-        });
-      }
-    } else {
-      const { error: updateError } = await admin
-        .from("notification_deliveries")
-        .update({
-          receipt_status: finalState,
-          receipt_attempt_count: nextAttemptCount,
-          receipt_next_attempt_at: isFinal
-            ? null
-            : nextReceiptAttempt(nextAttemptCount),
-          receipt_checked_at: isFinal ? new Date().toISOString() : null,
-          receipt_error_code: errorCode,
-          error_message: receipt?.message?.slice(0, 500) ?? null,
-        })
-        .eq("id", delivery.id);
-      if (updateError) {
-        return jsonResponse(500, {
-          error: "Teslimat sonucu kalıcılaştırılamadı.",
-        });
-      }
+    const persisted = await persistReceiptResult(
+      admin,
+      delivery,
+      state,
+      errorCode,
+      receipt?.message?.slice(0, 500) ?? null,
+    );
+    if (!persisted) {
+      return jsonResponse(500, {
+        error: "Teslimat sonucu lease sahibi tarafından kalıcılaştırılamadı.",
+      });
     }
 
     checked += 1;

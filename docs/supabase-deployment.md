@@ -4,7 +4,11 @@ Bu belge secret değerlerini içermez. Secret'ları sohbete veya kaynak koda yap
 
 ## Migration
 
-2026-08-30 itibarıyla repoda 53 forward migration bulunur. Aynı gün temiz yerel reset tümünü uyguladı; `public` lint 0 bulgu ve dört dosyada 174/174 pgTAP verdi. Bu sonuç linked staging/production deploy kanıtı değildir. Deploy öncesinde local/remote migration geçmişi eşitliği, linked lint ve aynı-SHA pgTAP yeniden çalıştırılmalı; geçmiş bir doğrulama güncel ortam kanıtı gibi sunulmamalıdır.
+2026-08-30 tarihsel baseline'ında repoda 53 forward migration vardı. Aynı gün temiz yerel reset tümünü uyguladı; `public` lint 0 bulgu ve dört dosyada 174/174 pgTAP verdi. Bu kayıt mevcut envanter veya güncel aynı-SHA sonucu değildir.
+
+2026-08-31 güncel repo envanteri **55 forward migration** ile beş pgTAP dosyasındaki `36 + 54 + 61 + 50 + 50 = 251` planlı kontroldür. Compose config, container contract, Toxiproxy resilience ve bounded sentetik load profilleri yerelde geçti. Canonical Supabase `docker:test` profilinin tamamlanmış aynı-SHA artifact'ı ile GitHub Docker gate sonucu bu kayıt yazılırken bağlı değildir; yalnız dosya sayımı migration/lint/pgTAP PASS kanıtı sayılmaz.
+
+Hiçbir yerel sonuç linked staging/production deploy kanıtı değildir. Deploy öncesinde local/remote migration geçmişi eşitliği, linked lint ve aynı-SHA pgTAP yeniden çalıştırılmalı; geçmiş veya mock tabanlı bir doğrulama güncel ortam kanıtı gibi sunulmamalıdır.
 
 ```powershell
 npx supabase login
@@ -16,7 +20,7 @@ npx supabase db lint --linked --level warning
 
 Pooler bağlantısı zaman aşımına uğrarsa Supabase Dashboard'da projenin aktif olduğunu ve `Database > Connect` altında pooler'ın erişilebilir olduğunu doğrula; ardından farklı ağ/VPN kapalıyken tekrar dene. Database password komut satırına yazılmamalı; CLI'nin güvenli istemine girilmelidir.
 
-`mobile-ci.yml` güvenlik işi izole GitHub runner üzerinde yerel Supabase/Docker başlatır; migration, lint ve transaction içindeki pgTAP'i production'a dokunmadan çalıştırır. Ayrı staging kanıtı bunun yerine geçmez ve release runbook'undaki environment korumasıyla ayrıca üretilir.
+`mobile-ci.yml` güvenlik işi izole GitHub runner üzerinde yerel Supabase/Docker başlatır; migration, lint ve transaction içindeki pgTAP'i production'a dokunmadan çalıştırır. `docker-validation.yml` ise aynı canonical Supabase CLI stack'ini izole bir çalışma kopyasında kullanır; ikinci bir Postgres/Auth/Storage/Realtime stack tanımlamaz. Test profili migration replay, strict lint, beş pgTAP dosyası, schema dump, backup/restore ve Edge/Worker contract adımlarını; diğer işler resilience, bounded sentetik load ve supply-chain kapılarını yürütür. Ayrı staging kanıtı bunların yerine geçmez ve release runbook'undaki environment korumasıyla ayrıca üretilir.
 
 ## Push worker Vault yapılandırması
 
@@ -28,7 +32,7 @@ Auth silindikten sonra kalan özel Storage temizliğinin kullanıcı JWT'sine ba
 
 ## Event.io aktarımı
 
-`ingest-events` Edge Function yalnızca sunucuda çalışır ve `https://etkinlik.io/rss/sorgu` kaynağını kullanır.
+`ingest-events` Edge Function yalnızca sunucuda çalışır ve yayıncı token'ını server-side secret'tan okuyarak exact allowlist'li `https://etkinlik.io/api/v2/events` resmî API kaynağını kullanır. RSS yalnız mobil keşfet akışının mevcut, bounded fallback adaptörüdür.
 
 ```powershell
 npx supabase secrets set INGEST_CRON_SECRET

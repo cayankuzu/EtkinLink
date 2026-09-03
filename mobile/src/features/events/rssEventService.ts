@@ -27,6 +27,14 @@ const rssRequestConcurrency = 4;
 const rssResponseLimitBytes = 2 * 1024 * 1024;
 const detailResponseLimitBytes = 4 * 1024 * 1024;
 const rssIdPrefix = 'etkinlik-io-';
+const etkinlikIoOrigin = 'https://etkinlik.io';
+const rssQueryParameters = new Set(['kategoriIds', 'sehirIds', 'turIds']);
+const rssContentTypes = new Set([
+  'application/rss+xml',
+  'application/xml',
+  'text/xml',
+]);
+const htmlContentTypes = new Set(['application/xhtml+xml', 'text/html']);
 let latestEvents: Event[] = [];
 const eventCache = new Map<string, Event>();
 const feedRequests = new Map<string, Promise<Event[]>>();
@@ -34,6 +42,138 @@ const feedCache = new Map<string, { events: Event[]; fetchedAt: number }>();
 const feedCacheDurationMs = 10 * 60 * 1000;
 let catalogRequest: Promise<RssCatalog> | null = null;
 const detailRequests = new Map<string, Promise<Event>>();
+
+type EtkinlikIoResourceKind = 'catalog' | 'detail' | 'rss';
+
+function mediaType(value: string | null): string {
+  return value?.split(';', 1)[0]?.trim().toLowerCase() ?? '';
+}
+
+function isAllowedDetailPath(pathname: string): boolean {
+  return /^\/etkinlik\/[1-9]\d{0,14}(?:\/[a-z0-9](?:[a-z0-9-]{0,198}[a-z0-9])?)?\/?$/i.test(
+    pathname,
+  );
+}
+
+function assertAllowedEtkinlikIoUrl(
+  input: string | URL,
+  kind: EtkinlikIoResourceKind,
+): URL {
+  let url: URL;
+  try {
+    url = new URL(input.toString());
+  } catch {
+    throw new Error('Etkinlik.io URL gecersiz.');
+  }
+
+  const hasCredentialsOrFragment =
+    url.username !== '' || url.password !== '' || url.hash !== '';
+  const hasUnexpectedRssQuery =
+    kind === 'rss' &&
+    ([...url.searchParams.keys()].some(key => !rssQueryParameters.has(key)) ||
+      [...rssQueryParameters].some(
+        key => url.searchParams.getAll(key).length > 1,
+      ) ||
+      [...url.searchParams.values()].some(
+        value => !/^\d+(?:,\d+)*$/.test(value),
+      ));
+  const allowedPath =
+    (kind === 'rss' && url.pathname === '/rss/sorgu') ||
+    (kind === 'catalog' &&
+      url.pathname === '/rss/bilgi' &&
+      url.search === '') ||
+    (kind === 'detail' &&
+      isAllowedDetailPath(url.pathname) &&
+      url.search === '');
+
+  if (
+    url.toString().length > 2048 ||
+    url.origin !== etkinlikIoOrigin ||
+    hasCredentialsOrFragment ||
+    !allowedPath ||
+    hasUnexpectedRssQuery
+  ) {
+    throw new Error('Etkinlik.io URL guvenlik allowlist disinda.');
+  }
+  return url;
+}
+
+function allowedDetailUrl(value: unknown): string | null {
+  const candidate = text(value);
+  if (!candidate) return null;
+  try {
+    return assertAllowedEtkinlikIoUrl(candidate, 'detail').toString();
+  } catch {
+    return null;
+  }
+}
+
+function cancelResponse(response: Response): void {
+  void response.body?.cancel().catch(() => undefined);
+}
+
+function assertSafeResponse(
+  response: Response,
+  requestedUrl: URL,
+  kind: EtkinlikIoResourceKind,
+): void {
+  if (
+    response.redirected ||
+    (response.status >= 300 && response.status < 400)
+  ) {
+    cancelResponse(response);
+    throw new Error('Etkinlik.io redirect yaniti reddedildi.');
+  }
+  if (response.url) {
+    const finalUrl = assertAllowedEtkinlikIoUrl(response.url, kind);
+    if (finalUrl.toString() !== requestedUrl.toString()) {
+      cancelResponse(response);
+      throw new Error('Etkinlik.io yonlendirilmis yaniti reddedildi.');
+    }
+  }
+}
+
+export async function requestEtkinlikIoText(
+  input: string | URL,
+  kind: EtkinlikIoResourceKind,
+  signal?: AbortSignal,
+  fetcher: typeof fetchGetWithRetry = fetchGetWithRetry,
+): Promise<string> {
+  const url = assertAllowedEtkinlikIoUrl(input, kind);
+  const response = await fetcher(url, {
+    method: 'GET',
+    redirect: 'error',
+    headers: {
+      Accept:
+        kind === 'rss'
+          ? 'application/rss+xml, application/xml;q=0.9'
+          : 'text/html,application/xhtml+xml',
+    },
+    signal,
+  });
+  assertSafeResponse(response, url, kind);
+  if (!response.ok) {
+    cancelResponse(response);
+    throw Object.assign(
+      new Error(`Etkinlik.io istegi basarisiz (${response.status}).`),
+      { status: response.status },
+    );
+  }
+
+  const allowedContentTypes =
+    kind === 'rss' ? rssContentTypes : htmlContentTypes;
+  if (
+    !allowedContentTypes.has(mediaType(response.headers.get('content-type')))
+  ) {
+    cancelResponse(response);
+    throw new Error('Etkinlik.io yanit icerik turu reddedildi.');
+  }
+  return readResponseTextLimited(
+    response,
+    kind === 'rss' ? rssResponseLimitBytes : detailResponseLimitBytes,
+    signal,
+  );
+}
 
 function preserveCardState(event: Event): Event {
   const hasFreshState =
@@ -113,10 +253,15 @@ function secureUrl(value: unknown): string | null {
       secureUrl(record(candidate)?.contentUrl)
     );
   }
-  if (typeof candidate !== 'string') return null;
+  if (typeof candidate !== 'string' || candidate.length > 2048) return null;
   try {
     const parsed = new URL(candidate);
-    return parsed.protocol === 'https:' ? parsed.toString() : null;
+    return parsed.protocol === 'https:' &&
+      parsed.username === '' &&
+      parsed.password === '' &&
+      parsed.hash === ''
+      ? parsed.toString()
+      : null;
   } catch {
     return null;
   }
@@ -301,15 +446,9 @@ function parseRssCatalog(html: string): RssCatalog {
 }
 
 async function requestRssCatalog(signal?: AbortSignal): Promise<RssCatalog> {
-  return fetchGetWithRetry(etkinlikIoRssInfoUrl, {
-    headers: { Accept: 'text/html,application/xhtml+xml' },
-    signal,
-  }).then(async response => {
-    if (!response.ok) throw new Error('RSS filtre kataloğu yüklenemedi.');
-    return parseRssCatalog(
-      await readResponseTextLimited(response, detailResponseLimitBytes, signal),
-    );
-  });
+  return parseRssCatalog(
+    await requestEtkinlikIoText(etkinlikIoRssInfoUrl, 'catalog', signal),
+  );
 }
 
 async function getRssCatalog(signal?: AbortSignal): Promise<RssCatalog> {
@@ -428,7 +567,7 @@ async function filteredRssUrls(
 
 function itemToEvent(item: RssItem): Event | null {
   const title = text(item.title);
-  const sourceUrl = text(item.link) || text(item.guid);
+  const sourceUrl = allowedDetailUrl(item.link) ?? allowedDetailUrl(item.guid);
   const date = new Date(text(item.pubDate));
   if (!title || !sourceUrl || Number.isNaN(date.getTime())) return null;
 
@@ -451,7 +590,7 @@ function itemToEvent(item: RssItem): Event | null {
     city: findCity(searchable),
     district: null,
     address: null,
-    imageUrl: text(item.enclosure?.url) || null,
+    imageUrl: secureUrl(item.enclosure?.url),
     categories: eventCategories,
     sourceUrl,
     attendeeCount: 0,
@@ -461,11 +600,15 @@ function itemToEvent(item: RssItem): Event | null {
 }
 
 export function parseEtkinlikIoRss(xml: string): Event[] {
+  if (/<!\s*(?:DOCTYPE|ENTITY)\b/i.test(xml)) {
+    throw new Error('RSS DTD veya entity bildirimi reddedildi.');
+  }
   const parsed = new XMLParser({
     ignoreAttributes: false,
     attributeNamePrefix: '',
     removeNSPrefix: true,
     trimValues: true,
+    processEntities: false,
   }).parse(xml) as {
     rss?: { channel?: { item?: RssItem | RssItem[] } };
   };
@@ -475,6 +618,9 @@ export function parseEtkinlikIoRss(xml: string): Event[] {
       ? rawItems
       : [rawItems]
     : [];
+  if (items.length > rssFeedLimit) {
+    throw new Error(`RSS item siniri asildi: ${rssFeedLimit}`);
+  }
   return items.flatMap(item => {
     const event = itemToEvent(item);
     return event ? [event] : [];
@@ -485,19 +631,8 @@ async function requestRssUrl(
   url: string,
   signal?: AbortSignal,
 ): Promise<Event[]> {
-  return fetchGetWithRetry(url, {
-    headers: { Accept: 'application/rss+xml, application/xml;q=0.9' },
-    signal,
-  }).then(async response => {
-    if (!response.ok) {
-      throw Object.assign(
-        new Error(`Etkinlik.io RSS isteği başarısız (${response.status}).`),
-        { status: response.status },
-      );
-    }
-    const events = parseEtkinlikIoRss(
-      await readResponseTextLimited(response, rssResponseLimitBytes, signal),
-    );
+  return requestEtkinlikIoText(url, 'rss', signal).then(xml => {
+    const events = parseEtkinlikIoRss(xml);
     events.forEach(event => eventCache.set(event.id, preserveCardState(event)));
     feedCache.set(url, { events, fetchedAt: Date.now() });
     return events;
@@ -795,20 +930,9 @@ export async function getRssEvent(
   if (!event) throw new Error('Etkinlik RSS akışında bulunamadı.');
   const existing = detailRequests.get(eventId);
   if (existing) return existing;
-  const request = fetchGetWithRetry(event.sourceUrl, {
-    headers: { Accept: 'text/html,application/xhtml+xml' },
-    signal,
-  })
-    .then(async response => {
-      if (!response.ok) return event;
-      const enriched = parseEtkinlikIoDetailHtml(
-        await readResponseTextLimited(
-          response,
-          detailResponseLimitBytes,
-          signal,
-        ),
-        event,
-      );
+  const request = requestEtkinlikIoText(event.sourceUrl, 'detail', signal)
+    .then(html => {
+      const enriched = parseEtkinlikIoDetailHtml(html, event);
       latestEvents = latestEvents.map(item =>
         item.id === eventId ? enriched : item,
       );
