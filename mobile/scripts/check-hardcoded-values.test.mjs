@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { findColorLiterals } from './check-design-tokens.mjs';
+import {
+  findColorLiterals,
+  findPageSizeLiterals,
+} from './check-hardcoded-values.mjs';
 
 test('token referansı kabul edilir', () => {
   const source = "const styles = { card: { backgroundColor: colors.surface } };";
@@ -56,4 +59,31 @@ test('renk olmayan diyez ve kimlikler yanlış pozitif üretmez', () => {
     "const hint = 'Sohbet #1';",
   ].join('\n');
   assert.deepEqual(findColorLiterals(source, 'src/G.tsx'), []);
+});
+
+test('sayfa boyutu literali reddedilir', () => {
+  const violations = findPageSizeLiterals('    .limit(35);', 'src/A.ts');
+  assert.equal(violations.length, 1);
+  assert.match(violations[0], /@shared\/constants\/limits sabitini kullan/u);
+});
+
+test('page_size ve pageSize anahtarları da yakalanır', () => {
+  const source = ['      page_size: 35,', '      pageSize: 20,'].join('\n');
+  assert.equal(findPageSizeLiterals(source, 'src/B.ts').length, 2);
+});
+
+test('sabit referansı kabul edilir', () => {
+  const source = [
+    '    .limit(paginationLimits.thread);',
+    '      page_size: paginationLimits.rooms,',
+  ].join('\n');
+  assert.deepEqual(findPageSizeLiterals(source, 'src/C.ts'), []);
+});
+
+test('limits modülü tek istisnadır', () => {
+  const source = '  thread: 35,';
+  assert.deepEqual(
+    findPageSizeLiterals(source, 'src/shared/constants/limits.ts'),
+    [],
+  );
 });

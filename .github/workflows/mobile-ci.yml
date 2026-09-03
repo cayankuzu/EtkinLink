@@ -48,8 +48,8 @@ jobs:
       - run: npm run performance:guards
       - run: npm run accessibility:guards
       - run: npm run accessibility:guards:test
-      - run: npm run tokens:guards
-      - run: npm run tokens:guards:test
+      - run: npm run hardcode:guards
+      - run: npm run hardcode:guards:test
       - run: npm run critical-flows
       - run: npm run ota:classifier:test
       - run: npm run release:signer:test

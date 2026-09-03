@@ -30,6 +30,9 @@ export const paginationLimits = {
   conversations: 30,
   profileEvents: 40,
   thread: 35,
+  // The room roster is a bounded single page; a room that grows past
+  // this shows its earliest joiners.
+  roomParticipants: 200,
 } as const;
 
 export const outboxLimits = {

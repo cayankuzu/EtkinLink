@@ -1,3 +1,4 @@
+import { paginationLimits } from '@shared/constants/limits';
 import { getSignedProfilePhotoUrls } from '@shared/lib/profilePhotoUrls';
 import { supabase } from '@shared/lib/supabase';
 
@@ -20,7 +21,7 @@ export async function listRoomParticipants(
     .eq('event_id', eventId)
     .eq('status', 'joined')
     .order('joined_at', { ascending: true })
-    .limit(200);
+    .limit(paginationLimits.roomParticipants);
   if (attendeeError) throw attendeeError;
   const userIds = attendees.map(item => item.user_id);
   if (userIds.length === 0) return [];

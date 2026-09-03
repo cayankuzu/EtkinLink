@@ -90,7 +90,7 @@ export async function listRoomMessages(
   const { data, error } = await applyAbortSignal(
     supabase.rpc('list_room_messages', {
       target_event_id: eventId,
-      page_size: 35,
+      page_size: paginationLimits.thread,
       cursor_created_at: cursor?.createdAt ?? null,
       cursor_message_id: cursor?.id ?? null,
     }),

@@ -167,7 +167,7 @@ export async function listDirectMessages(
     .eq('match_id', matchId)
     .order('created_at', { ascending: false })
     .order('id', { ascending: false })
-    .limit(35);
+    .limit(paginationLimits.thread);
   if (cursor)
     query = query.or(
       `created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`,
