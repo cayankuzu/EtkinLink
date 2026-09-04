@@ -93,13 +93,13 @@ export function MatchHubScreen({ route, navigation }: Props) {
             label="Geri"
             onPress={navigation.goBack}
           />
-          <AppText variant="heading18">Eşleşme</AppText>
+          <AppText variant="headingSm">Eşleşme</AppText>
           <View style={styles.headerSpacer} />
         </View>
         <View style={styles.eventChip}>
           <View style={styles.eventDot} />
           <AppText
-            variant="caption12"
+            variant="caption"
             style={styles.eventChipText}
             numberOfLines={1}
           >
@@ -122,10 +122,10 @@ export function MatchHubScreen({ route, navigation }: Props) {
             <View style={styles.eventThumb} />
           )}
           <View style={styles.incompleteEventText}>
-            <AppText variant="label13" numberOfLines={1}>
+            <AppText variant="overline" numberOfLines={1}>
               {event.data.title}
             </AppText>
-            <AppText variant="caption12" tone="secondary" numberOfLines={1}>
+            <AppText variant="caption" tone="secondary" numberOfLines={1}>
               {event.data.categories[0] ?? 'Etkinlik'} ·{' '}
               {event.data.city ?? 'Türkiye'}
             </AppText>
@@ -133,16 +133,16 @@ export function MatchHubScreen({ route, navigation }: Props) {
         </Pressable>
         <View style={styles.checklistCard}>
           <View style={styles.checklistHeading}>
-            <AppText variant="heading18">Profilini tamamla</AppText>
-            <AppText variant="caption12" tone="secondary">
+            <AppText variant="headingSm">Profilini tamamla</AppText>
+            <AppText variant="caption" tone="secondary">
               Eşleşmeye başlamak için aşağıdakileri tamamla
             </AppText>
           </View>
           <View style={styles.progressHeading}>
-            <AppText variant="caption12" tone="brand">
+            <AppText variant="caption" tone="brand">
               Eşleşme Hazırlığı
             </AppText>
-            <AppText variant="caption12" tone="secondary">
+            <AppText variant="caption" tone="secondary">
               {completed}/3 Tamamlandı
             </AppText>
           </View>
@@ -195,7 +195,7 @@ export function MatchHubScreen({ route, navigation }: Props) {
     >
       <View style={styles.header}>
         <IconButton icon={ArrowLeft} label="Geri" onPress={navigation.goBack} />
-        <AppText variant="heading20">Eşleşme</AppText>
+        <AppText variant="headingMd">Eşleşme</AppText>
         <View style={styles.spacer} />
       </View>
       <Pressable
@@ -207,7 +207,7 @@ export function MatchHubScreen({ route, navigation }: Props) {
         style={styles.eventBar}
       >
         <AppText
-          variant="label15"
+          variant="label"
           tone="inverse"
           numberOfLines={1}
           style={styles.eventText}
@@ -220,7 +220,7 @@ export function MatchHubScreen({ route, navigation }: Props) {
         <View style={styles.heroIcon}>
           <UserRoundCheck size={28} color={colors.brand} />
         </View>
-        <AppText variant="heading24" align="center">
+        <AppText variant="headingXl" align="center">
           Aynı etkinlikte tanış
         </AppText>
         <AppText tone="secondary" align="center">
@@ -244,12 +244,12 @@ export function MatchHubScreen({ route, navigation }: Props) {
       </View>
       <View style={styles.activationCard}>
         <View style={styles.activationText}>
-          <AppText variant="label15">Tüm odalarda eşleşme</AppText>
-          <AppText variant="caption12" tone="secondary">
+          <AppText variant="label">Tüm odalarda eşleşme</AppText>
+          <AppText variant="caption" tone="secondary">
             Ücretsiz planda eşleşme tüm katıldığın odalarda birlikte açılır.
           </AppText>
         </View>
-        <AppText variant="caption12" tone={enabled ? 'success' : 'secondary'}>
+        <AppText variant="caption" tone={enabled ? 'success' : 'secondary'}>
           {enabled ? 'Açık' : 'Kapalı'}
         </AppText>
       </View>
@@ -260,15 +260,15 @@ export function MatchHubScreen({ route, navigation }: Props) {
       >
         <Crown size={20} color={colors.warning} />
         <View style={styles.premiumText}>
-          <AppText variant="label15">Yalnız bu odada aç</AppText>
-          <AppText variant="caption12" tone="secondary">
+          <AppText variant="label">Yalnız bu odada aç</AppText>
+          <AppText variant="caption" tone="secondary">
             {premiumComingSoonMessage}
           </AppText>
         </View>
         <ChevronRight size={20} color={colors.textTertiary} />
       </Pressable>
       {activation.error ? (
-        <AppText variant="caption12" tone="danger">
+        <AppText variant="caption" tone="danger">
           {toAppError(activation.error).message}
         </AppText>
       ) : null}
@@ -302,7 +302,7 @@ export function MatchHubScreen({ route, navigation }: Props) {
             <View style={styles.successIcon}>
               <Check size={22} color={colors.success} />
             </View>
-            <AppText variant="heading20" align="center">
+            <AppText variant="headingMd" align="center">
               Eşleşme açıldı
             </AppText>
             <AppText tone="secondary" align="center">
@@ -346,7 +346,7 @@ function ProfileRequirement({
       >
         <Icon size={14} color={complete ? colors.success : colors.danger} />
       </View>
-      <AppText variant="body14" style={styles.profileRequirementLabel}>
+      <AppText variant="body" style={styles.profileRequirementLabel}>
         {label}
       </AppText>
       <View
@@ -355,7 +355,7 @@ function ProfileRequirement({
           !complete && styles.requirementBadgeMissing,
         ]}
       >
-        <AppText variant="caption12" tone={complete ? 'success' : 'danger'}>
+        <AppText variant="caption" tone={complete ? 'success' : 'danger'}>
           {value}
         </AppText>
       </View>
@@ -367,7 +367,7 @@ function Requirement({ icon, text }: { icon: React.ReactNode; text: string }) {
   return (
     <View style={styles.requirement}>
       <View style={styles.check}>{icon}</View>
-      <AppText variant="body14">{text}</AppText>
+      <AppText variant="body">{text}</AppText>
     </View>
   );
 }
@@ -413,7 +413,7 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     backgroundColor: colors.accent,
   },
-  eventChipText: { color: colors.accent },
+  eventChipText: { color: colors.accentStrong },
   incompleteEvent: {
     minHeight: 60,
     borderRadius: radius.md,

@@ -12,6 +12,11 @@ export const colors = {
   infoSoft: '#EEF4FF',
   accent: '#FF6B5E',
   accentSoft: '#FFF0EE',
+  // Coral is a fill, not a text colour: #FF6B5E only reaches 2.52:1 on
+  // accentSoft. Every other soft surface here already pairs with a dark
+  // partner (success/warning/danger); this restores that pairing, held
+  // away from danger in hue so the two stay tellable apart.
+  accentStrong: '#C2410C',
   textPrimary: '#101828',
   textSecondary: '#475467',
   textTertiary: '#667085',
@@ -62,86 +67,79 @@ export const radius = {
   full: 999,
 } as const;
 
+// Role names, not size names. The previous scale was size-suffixed and every
+// suffix had drifted from its value after a retune, so a developer reaching
+// for "body16" silently got 14px. Roles describe intent and cannot go stale.
+// The smallest tier is 12px: the old 10px tier carried event dates, chat
+// timestamps and compatibility labels, which is real content, not decoration.
 export const typography = {
   display: {
     fontFamily: 'Manrope',
     fontSize: 26,
-    lineHeight: 32,
+    lineHeight: 33,
     fontWeight: '700' as const,
   },
-  heading24: {
+  headingXl: {
     fontFamily: 'Manrope',
     fontSize: 22,
     lineHeight: 28,
     fontWeight: '700' as const,
   },
-  heading22: {
+  headingLg: {
     fontFamily: 'Manrope',
     fontSize: 20,
     lineHeight: 26,
     letterSpacing: -0.2,
     fontWeight: '700' as const,
   },
-  heading20: {
+  headingMd: {
     fontFamily: 'Manrope',
     fontSize: 18,
     lineHeight: 24,
     fontWeight: '700' as const,
   },
-  heading18: {
+  headingSm: {
     fontFamily: 'Manrope',
     fontSize: 16,
     lineHeight: 21,
     fontWeight: '600' as const,
   },
-  body16: {
+  bodyLg: {
     fontFamily: 'Inter',
     fontSize: 14,
     lineHeight: 20,
     fontWeight: '400' as const,
   },
-  body15: {
+  body: {
     fontFamily: 'Inter',
     fontSize: 13,
     lineHeight: 19,
     fontWeight: '400' as const,
   },
-  label15: {
+  label: {
     fontFamily: 'Inter',
     fontSize: 13,
     lineHeight: 18,
     fontWeight: '600' as const,
   },
-  label14: {
+  labelSm: {
     fontFamily: 'Inter',
     fontSize: 12,
     lineHeight: 17,
     fontWeight: '600' as const,
   },
-  label13: {
+  overline: {
     fontFamily: 'Inter',
     fontSize: 12,
     lineHeight: 17,
     letterSpacing: 0.1,
     fontWeight: '500' as const,
   },
-  body14: {
-    fontFamily: 'Inter',
-    fontSize: 13,
-    lineHeight: 19,
-    fontWeight: '400' as const,
-  },
-  caption12: {
+  caption: {
     fontFamily: 'Inter',
     fontSize: 12,
     lineHeight: 17,
     letterSpacing: 0.2,
-    fontWeight: '500' as const,
-  },
-  tiny11: {
-    fontFamily: 'Inter',
-    fontSize: 10,
-    lineHeight: 14,
     fontWeight: '500' as const,
   },
 } as const;

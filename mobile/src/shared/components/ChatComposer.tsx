@@ -51,7 +51,7 @@ export function ChatComposer({
           onPress={onSend}
         />
       </View>
-      <AppText variant="tiny11" tone="tertiary" align="right">
+      <AppText variant="caption" tone="tertiary" align="right">
         {value.length}/{contentLimits.message}
       </AppText>
     </View>
@@ -79,7 +79,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   input: {
-    ...typography.body15,
+    ...typography.body,
     color: colors.textPrimary,
     flex: 1,
     maxHeight: 96,

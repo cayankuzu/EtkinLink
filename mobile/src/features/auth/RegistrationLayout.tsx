@@ -46,7 +46,7 @@ export function RegistrationLayout({
             style={styles.brandImage}
             resizeMode="contain"
           />
-          <AppText variant="label15" tone="brand">
+          <AppText variant="label" tone="brand">
             EtkinLink
           </AppText>
         </View>
@@ -54,10 +54,10 @@ export function RegistrationLayout({
       </View>
 
       <View style={styles.progressMeta}>
-        <AppText variant="caption12" tone="brand">
+        <AppText variant="caption" tone="brand">
           ADIM {step} / 5
         </AppText>
-        <AppText variant="caption12" tone="secondary">
+        <AppText variant="caption" tone="secondary">
           %{step * 20} tamamlandı
         </AppText>
       </View>
@@ -70,8 +70,8 @@ export function RegistrationLayout({
           <Icon size={24} color={colors.brand} strokeWidth={2.2} />
         </View>
         <View style={styles.introCopy}>
-          <AppText variant="heading24">{title}</AppText>
-          <AppText variant="body14" tone="secondary">
+          <AppText variant="headingXl">{title}</AppText>
+          <AppText variant="body" tone="secondary">
             {description}
           </AppText>
         </View>

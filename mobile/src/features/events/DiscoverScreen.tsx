@@ -258,7 +258,7 @@ export function DiscoverScreen({ navigation }: Props) {
             resizeMode="contain"
             accessibilityIgnoresInvertColors
           />
-          <AppText variant="heading22" tone="brand">
+          <AppText variant="headingLg" tone="brand">
             EtkinLink
           </AppText>
         </View>
@@ -326,8 +326,8 @@ export function DiscoverScreen({ navigation }: Props) {
           ListHeaderComponent={
             <View style={styles.sectionHeader}>
               <View style={styles.sectionTitle}>
-                <AppText variant="heading18">Yaklaşan Etkinlikler</AppText>
-                <AppText variant="caption12" tone="secondary">
+                <AppText variant="headingSm">Yaklaşan Etkinlikler</AppText>
+                <AppText variant="caption" tone="secondary">
                   {latestTimestamp > 0
                     ? `${items.length} etkinlik · ${feedEndDateFormatter.format(
                         latestTimestamp,
@@ -335,7 +335,7 @@ export function DiscoverScreen({ navigation }: Props) {
                     : 'İlgi alanlarına uygun etkinlikleri keşfet'}
                 </AppText>
               </View>
-              <AppText variant="caption12" tone="brand" numberOfLines={1}>
+              <AppText variant="caption" tone="brand" numberOfLines={1}>
                 {city ?? 'Tüm şehirler'}
               </AppText>
             </View>
@@ -345,7 +345,7 @@ export function DiscoverScreen({ navigation }: Props) {
               <Skeleton style={styles.footerSkeleton} />
             ) : events.isFetching && !events.isSuccess ? (
               <AppText
-                variant="caption12"
+                variant="caption"
                 tone="secondary"
                 style={styles.backgroundLoading}
               >

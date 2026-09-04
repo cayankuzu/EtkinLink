@@ -52,11 +52,11 @@ export function CompatibilityCard({
         <View style={styles.titleRow}>
           <View style={styles.titleLeft}>
             <HeartHandshake size={compact ? 17 : 20} color={colors.brand} />
-            <AppText variant={compact ? 'label14' : 'label15'}>
+            <AppText variant={compact ? 'labelSm' : 'label'}>
               Genel uyum
             </AppText>
           </View>
-          <AppText variant={compact ? 'label15' : 'heading20'} tone="brand">
+          <AppText variant={compact ? 'label' : 'headingMd'} tone="brand">
             %{compatibility.score}
           </AppText>
         </View>
@@ -101,8 +101,8 @@ export function CompatibilityCard({
               <View style={styles.sheetHeading}>
                 <Sparkles size={22} color={colors.brand} />
                 <View>
-                  <AppText variant="heading20">Uyum detayları</AppText>
-                  <AppText variant="caption12" tone="secondary">
+                  <AppText variant="headingMd">Uyum detayları</AppText>
+                  <AppText variant="caption" tone="secondary">
                     Eşleşme için ortak noktalarınız
                   </AppText>
                 </View>
@@ -115,10 +115,10 @@ export function CompatibilityCard({
             </View>
             <ScrollView contentContainerStyle={styles.sheetContent}>
               <View style={styles.scoreHero}>
-                <AppText variant="heading24" tone="brand">
+                <AppText variant="headingXl" tone="brand">
                   %{compatibility.score}
                 </AppText>
-                <AppText variant="label14">Genel uyum oranı</AppText>
+                <AppText variant="labelSm">Genel uyum oranı</AppText>
                 <View style={styles.track}>
                   <View
                     style={[
@@ -151,7 +151,7 @@ export function CompatibilityCard({
                 <View style={styles.chips}>
                   {compatibility.interests.items.map(item => (
                     <View key={item.id} style={styles.chip}>
-                      <AppText variant="caption12" tone="brand">
+                      <AppText variant="caption" tone="brand">
                         {item.label}
                       </AppText>
                     </View>
@@ -211,11 +211,11 @@ function SummaryMetric({
 }) {
   return (
     <View style={styles.summaryMetric}>
-      <AppText variant="label14">{value}</AppText>
-      <AppText variant="tiny11" tone="secondary" numberOfLines={1}>
+      <AppText variant="labelSm">{value}</AppText>
+      <AppText variant="caption" tone="secondary" numberOfLines={1}>
         {label}
       </AppText>
-      <AppText variant="tiny11" tone="brand">
+      <AppText variant="caption" tone="brand">
         %{score}
       </AppText>
     </View>
@@ -225,7 +225,7 @@ function SummaryMetric({
 function MatchFacts({ context }: { context: MatchContext }) {
   return (
     <View style={styles.facts}>
-      <AppText variant="label15">Eşleşme anındaki bilgiler</AppText>
+      <AppText variant="label">Eşleşme anındaki bilgiler</AppText>
       <Fact
         label="İlk beğenen"
         value={context.firstLiker.name ?? 'Bilinmiyor'}
@@ -249,10 +249,10 @@ function MatchFacts({ context }: { context: MatchContext }) {
 function Fact({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.factRow}>
-      <AppText variant="caption12" tone="secondary">
+      <AppText variant="caption" tone="secondary">
         {label}
       </AppText>
-      <AppText variant="label14" style={styles.factValue}>
+      <AppText variant="labelSm" style={styles.factValue}>
         {value}
       </AppText>
     </View>
@@ -291,13 +291,13 @@ function DimensionRow({
           <Icon size={20} color={colors.brand} />
         </View>
         <View style={styles.dimensionText}>
-          <AppText variant="label15">{label}</AppText>
-          <AppText variant="caption12" tone="secondary">
+          <AppText variant="label">{label}</AppText>
+          <AppText variant="caption" tone="secondary">
             {dimension.commonCount} ortak · Sen {dimension.myCount} · O{' '}
             {dimension.theirCount}
           </AppText>
         </View>
-        <AppText variant="label14" tone="brand">
+        <AppText variant="labelSm" tone="brand">
           %{dimension.score}
         </AppText>
         {expanded ? (
@@ -311,7 +311,7 @@ function DimensionRow({
           {dimension.commonCount > 0 ? (
             children
           ) : (
-            <AppText variant="caption12" tone="secondary" align="center">
+            <AppText variant="caption" tone="secondary" align="center">
               Bu başlıkta henüz ortak kayıt yok.
             </AppText>
           )}
@@ -345,11 +345,11 @@ function EventList({
             iconSize={18}
           />
           <View style={styles.eventText}>
-            <AppText variant="label14" numberOfLines={2}>
+            <AppText variant="labelSm" numberOfLines={2}>
               {event.title}
             </AppText>
             {event.startAt ? (
-              <AppText variant="tiny11" tone="secondary">
+              <AppText variant="caption" tone="secondary">
                 {new Date(event.startAt).toLocaleDateString('tr-TR', {
                   day: 'numeric',
                   month: 'short',

@@ -32,7 +32,7 @@ const tones: Record<TextTone, string> = {
 };
 
 export function AppText({
-  variant = 'body15',
+  variant = 'body',
   tone = 'primary',
   align,
   style,

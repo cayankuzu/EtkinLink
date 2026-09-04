@@ -37,7 +37,7 @@ export function RoomTypingIndicator({
                 index > 0 && styles.avatarOverlap,
               ]}
             >
-              <AppText variant="tiny11" tone="brand">
+              <AppText variant="caption" tone="brand">
                 {participant.fullName
                   .trim()
                   .charAt(0)
@@ -47,7 +47,7 @@ export function RoomTypingIndicator({
           ),
         )}
       </View>
-      <AppText variant="caption12" tone="success" numberOfLines={2}>
+      <AppText variant="caption" tone="success" numberOfLines={2}>
         {label}
       </AppText>
     </View>

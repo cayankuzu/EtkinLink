@@ -62,7 +62,7 @@ export function ProfileView({
     <View style={styles.wrapper}>
       {ownProfile ? (
         <View style={styles.appBar}>
-          <AppText variant="heading22" style={styles.appBarTitle}>
+          <AppText variant="headingLg" style={styles.appBarTitle}>
             Profil
           </AppText>
           {onSaved ? (
@@ -92,22 +92,22 @@ export function ProfileView({
 
       <View style={styles.profileCard}>
         <View style={styles.identity}>
-          <AppText variant="heading22" align="center">
+          <AppText variant="headingLg" align="center">
             {profile.fullName}
           </AppText>
-          <AppText variant="body14" tone="secondary" align="center">
+          <AppText variant="body" tone="secondary" align="center">
             @{profile.username}
           </AppText>
         </View>
 
         {meta.length ? (
-          <AppText variant="caption12" tone="secondary" align="center">
+          <AppText variant="caption" tone="secondary" align="center">
             {meta.join('  ·  ')}
           </AppText>
         ) : null}
 
         {profile.bio ? (
-          <AppText variant="body14" tone="secondary" align="center">
+          <AppText variant="body" tone="secondary" align="center">
             {profile.bio}
           </AppText>
         ) : null}
@@ -115,7 +115,7 @@ export function ProfileView({
         <View style={styles.interests}>
           {profile.interests.map(interest => (
             <View key={interest.id} style={styles.interest}>
-              <AppText variant="caption12" tone="brand">
+              <AppText variant="caption" tone="brand">
                 {interest.label}
               </AppText>
             </View>
@@ -139,7 +139,7 @@ export function ProfileView({
           style={[styles.tab, selected === 'upcoming' && styles.tabSelected]}
         >
           <AppText
-            variant="label15"
+            variant="label"
             tone={selected === 'upcoming' ? 'primary' : 'secondary'}
           >
             Katılacaklarım ({upcoming.length})
@@ -152,7 +152,7 @@ export function ProfileView({
           style={[styles.tab, selected === 'attended' && styles.tabSelected]}
         >
           <AppText
-            variant="label15"
+            variant="label"
             tone={selected === 'attended' ? 'primary' : 'secondary'}
           >
             Katıldıklarım ({attended.length})
@@ -210,10 +210,10 @@ function EventTile({ event, onPress }: { event: Event; onPress: () => void }) {
         iconSize={28}
       />
       <View style={styles.eventInfo}>
-        <AppText variant="label14" numberOfLines={2}>
+        <AppText variant="labelSm" numberOfLines={2}>
           {event.title}
         </AppText>
-        <AppText variant="tiny11" tone="secondary">
+        <AppText variant="caption" tone="secondary">
           {new Date(event.startAt).toLocaleDateString('tr-TR', {
             day: 'numeric',
             month: 'short',

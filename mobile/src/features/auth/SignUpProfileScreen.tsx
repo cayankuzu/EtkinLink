@@ -168,7 +168,7 @@ export function SignUpProfileScreen({ navigation }: Props) {
         name="birthDate"
         render={({ field: { onChange, value } }) => (
           <View style={styles.fieldGroup}>
-            <AppText variant="label14">Doğum tarihi</AppText>
+            <AppText variant="labelSm">Doğum tarihi</AppText>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Doğum tarihi seç"
@@ -196,7 +196,7 @@ export function SignUpProfileScreen({ navigation }: Props) {
               />
             ) : null}
             {errors.birthDate ? (
-              <AppText variant="caption12" tone="danger">
+              <AppText variant="caption" tone="danger">
                 {errors.birthDate.message}
               </AppText>
             ) : null}
@@ -210,7 +210,7 @@ export function SignUpProfileScreen({ navigation }: Props) {
           <View style={styles.fieldGroup}>
             <View style={styles.labelWithIcon}>
               <UsersRound size={18} color={colors.textSecondary} />
-              <AppText variant="label14">Cinsiyet</AppText>
+              <AppText variant="labelSm">Cinsiyet</AppText>
             </View>
             <View style={styles.chips}>
               {genderOptions.map(option => (

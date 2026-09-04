@@ -86,10 +86,10 @@ export function SignUpInterestsScreen({ navigation }: Props) {
       <View style={styles.selectionHeader}>
         <View style={styles.labelWithIcon}>
           <Sparkles size={18} color={colors.brand} />
-          <AppText variant="label14">İlgi alanları</AppText>
+          <AppText variant="labelSm">İlgi alanları</AppText>
         </View>
         <AppText
-          variant="caption12"
+          variant="caption"
           tone={selected.length >= 3 ? 'success' : 'brand'}
         >
           {selected.length} seçildi · en az 3

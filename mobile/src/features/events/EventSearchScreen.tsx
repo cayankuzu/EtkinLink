@@ -112,10 +112,10 @@ export function EventSearchScreen({ navigation }: Props) {
         </View>
       </View>
       <View style={styles.searchMeta}>
-        <AppText variant="caption12" tone="secondary">
+        <AppText variant="caption" tone="secondary">
           Türkiye geneli · tüm şehirler · tüm tarihler
         </AppText>
-        <AppText variant="caption12" tone="tertiary">
+        <AppText variant="caption" tone="tertiary">
           {query.length}/80
         </AppText>
       </View>
@@ -181,7 +181,7 @@ export function EventSearchScreen({ navigation }: Props) {
           ListFooterComponent={
             isSearchingTurkey ? (
               <AppText
-                variant="caption12"
+                variant="caption"
                 tone="secondary"
                 style={styles.indexing}
               >
@@ -215,7 +215,7 @@ const styles = StyleSheet.create({
     paddingLeft: spacing.md,
   },
   input: {
-    ...typography.body15,
+    ...typography.body,
     flex: 1,
     color: colors.textPrimary,
     minHeight: layout.touchTarget,

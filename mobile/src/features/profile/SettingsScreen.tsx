@@ -165,7 +165,7 @@ export function SettingsScreen({ navigation }: Props) {
           onPress={navigation.goBack}
           style={styles.headerButton}
         />
-        <AppText variant="heading20" style={styles.headerTitle}>
+        <AppText variant="headingMd" style={styles.headerTitle}>
           Ayarlar
         </AppText>
         <View style={styles.spacer} />
@@ -207,7 +207,7 @@ export function SettingsScreen({ navigation }: Props) {
         />
       </SettingsGroup>
       {profile.isError || matchingMode.error ? (
-        <AppText variant="caption12" tone="danger" accessibilityRole="alert">
+        <AppText variant="caption" tone="danger" accessibilityRole="alert">
           {toAppError(profile.error ?? matchingMode.error).message}
         </AppText>
       ) : null}
@@ -255,8 +255,8 @@ export function SettingsScreen({ navigation }: Props) {
       >
         <View style={styles.backdrop}>
           <View style={styles.modal} accessibilityViewIsModal>
-            <AppText variant="heading20">Hesabı kalıcı olarak sil</AppText>
-            <AppText variant="body14" tone="secondary">
+            <AppText variant="headingMd">Hesabı kalıcı olarak sil</AppText>
+            <AppText variant="body" tone="secondary">
               Profilin, fotoğrafların, mesajların, eşleşmelerin ve etkinlik
               katılımların kalıcı olarak silinir. Bu işlem geri alınamaz.
             </AppText>
@@ -268,7 +268,7 @@ export function SettingsScreen({ navigation }: Props) {
               onChangeText={setConfirmation}
             />
             {error ? (
-              <AppText variant="caption12" tone="danger">
+              <AppText variant="caption" tone="danger">
                 {error}
               </AppText>
             ) : null}
@@ -300,7 +300,7 @@ function SettingsGroup({
 }) {
   return (
     <View style={styles.group}>
-      <AppText variant="tiny11" tone="secondary">
+      <AppText variant="caption" tone="secondary">
         {title}
       </AppText>
       <View style={styles.card}>{children}</View>
@@ -335,7 +335,7 @@ function SettingRow({
     >
       <Icon size={21} color={color} />
       <AppText
-        variant="label15"
+        variant="label"
         tone={danger ? 'danger' : 'primary'}
         style={styles.rowTitle}
       >
@@ -367,8 +367,8 @@ function SettingToggleRow({
     <View style={[styles.toggleRow, !last && styles.rowBorder]}>
       <Icon size={21} color={colors.textSecondary} />
       <View style={styles.toggleText}>
-        <AppText variant="label15">{title}</AppText>
-        <AppText variant="caption12" tone="secondary">
+        <AppText variant="label">{title}</AppText>
+        <AppText variant="caption" tone="secondary">
           {description}
         </AppText>
       </View>

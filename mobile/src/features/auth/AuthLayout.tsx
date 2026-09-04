@@ -78,12 +78,12 @@ export function AuthLayout({
                   resizeMode="contain"
                 />
               </View>
-              <AppText variant="label15" tone="brand">
+              <AppText variant="label" tone="brand">
                 EtkinLink
               </AppText>
             </View>
           ) : (
-            <AppText variant="heading18" style={styles.standardTitle}>
+            <AppText variant="headingSm" style={styles.standardTitle}>
               {title}
             </AppText>
           )}
@@ -95,7 +95,7 @@ export function AuthLayout({
             {eyebrow ? (
               <View style={styles.eyebrowBadge}>
                 <View style={styles.eyebrowDot} />
-                <AppText variant="caption12" tone="brand">
+                <AppText variant="caption" tone="brand">
                   {eyebrow}
                 </AppText>
               </View>
@@ -105,7 +105,7 @@ export function AuthLayout({
             </AppText>
             {description ? (
               <AppText
-                variant="body15"
+                variant="body"
                 tone="secondary"
                 style={styles.description}
               >
@@ -114,7 +114,7 @@ export function AuthLayout({
             ) : null}
           </View>
         ) : description ? (
-          <AppText variant="caption12" tone="secondary">
+          <AppText variant="caption" tone="secondary">
             {description}
           </AppText>
         ) : null}

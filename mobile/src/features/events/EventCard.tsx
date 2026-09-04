@@ -52,23 +52,23 @@ export function EventCard({
       <View style={styles.content}>
         <View style={styles.topMeta}>
           <View style={styles.categoryBadge}>
-            <AppText variant="tiny11" tone="brand" numberOfLines={1}>
+            <AppText variant="caption" tone="brand" numberOfLines={1}>
               {event.categories[0] ?? 'Etkinlik'}
             </AppText>
           </View>
-          <AppText variant="tiny11" tone="tertiary" numberOfLines={1}>
+          <AppText variant="caption" tone="tertiary" numberOfLines={1}>
             {formatCardDate(event.startAt)}
           </AppText>
         </View>
 
-        <AppText variant="label14" numberOfLines={2}>
+        <AppText variant="labelSm" numberOfLines={2}>
           {event.title}
         </AppText>
 
         <View style={styles.locationRow}>
           <MapPin size={13} color={colors.textTertiary} />
           <AppText
-            variant="tiny11"
+            variant="caption"
             tone="secondary"
             numberOfLines={1}
             style={styles.locationText}
@@ -95,7 +95,7 @@ export function EventCard({
               </View>
             )}
             <AppText
-              variant="tiny11"
+              variant="caption"
               tone="secondary"
               numberOfLines={1}
               style={styles.attendeeText}
@@ -105,7 +105,7 @@ export function EventCard({
           </View>
           {type === 'joined' ? (
             <View style={styles.joinedBadge}>
-              <AppText variant="tiny11" tone="success">
+              <AppText variant="caption" tone="success">
                 Katılıyorsun
               </AppText>
             </View>

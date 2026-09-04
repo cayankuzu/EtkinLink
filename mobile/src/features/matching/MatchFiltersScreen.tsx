@@ -104,7 +104,7 @@ export function MatchFiltersScreen({ route, navigation }: Props) {
     <Screen scroll contentStyle={styles.screen}>
       <View style={styles.header}>
         <IconButton icon={ArrowLeft} label="Geri" onPress={navigation.goBack} />
-        <AppText variant="heading20">Eşleşme filtreleri</AppText>
+        <AppText variant="headingMd">Eşleşme filtreleri</AppText>
         <Crown size={24} color={colors.warning} />
       </View>
       <View style={styles.notice}>
@@ -113,10 +113,10 @@ export function MatchFiltersScreen({ route, navigation }: Props) {
           color={premium ? colors.success : colors.warning}
         />
         <View style={styles.noticeText}>
-          <AppText variant="label15">
+          <AppText variant="label">
             {premium ? 'Premium filtreler açık' : premiumComingSoonMessage}
           </AppText>
-          <AppText variant="caption12" tone="secondary">
+          <AppText variant="caption" tone="secondary">
             Filtreler görünür; ücretsiz planda değiştirilemez. Mesafe filtresi
             özellikle bulunmaz.
           </AppText>
@@ -133,9 +133,9 @@ export function MatchFiltersScreen({ route, navigation }: Props) {
         accessibilityHint={premium ? undefined : premiumComingSoonMessage}
         style={styles.section}
       >
-        <AppText variant="heading18">Gösterilecek kişiler</AppText>
+        <AppText variant="headingSm">Gösterilecek kişiler</AppText>
         {!premium ? (
-          <AppText variant="caption12" style={styles.comingSoonText}>
+          <AppText variant="caption" style={styles.comingSoonText}>
             {premiumComingSoonMessage}
           </AppText>
         ) : null}
@@ -168,9 +168,9 @@ export function MatchFiltersScreen({ route, navigation }: Props) {
         accessibilityHint={premium ? undefined : premiumComingSoonMessage}
         style={styles.section}
       >
-        <AppText variant="heading18">Yaş aralığı</AppText>
+        <AppText variant="headingSm">Yaş aralığı</AppText>
         {!premium ? (
-          <AppText variant="caption12" style={styles.comingSoonText}>
+          <AppText variant="caption" style={styles.comingSoonText}>
             {premiumComingSoonMessage}
           </AppText>
         ) : null}
@@ -208,18 +208,18 @@ export function MatchFiltersScreen({ route, navigation }: Props) {
         accessibilityHint={premium ? undefined : premiumComingSoonMessage}
         style={styles.section}
       >
-        <AppText variant="heading18">İlgi alanları</AppText>
+        <AppText variant="headingSm">İlgi alanları</AppText>
         <AppText tone="secondary">
           Ortak ilgi alanlarına göre adayları daraltabilirsin.
         </AppText>
         {!premium ? (
-          <AppText variant="caption12" style={styles.comingSoonText}>
+          <AppText variant="caption" style={styles.comingSoonText}>
             {premiumComingSoonMessage}
           </AppText>
         ) : null}
       </Pressable>
       {save.error ? (
-        <AppText variant="caption12" tone="danger" accessibilityRole="alert">
+        <AppText variant="caption" tone="danger" accessibilityRole="alert">
           {toAppError(save.error).message}
         </AppText>
       ) : null}

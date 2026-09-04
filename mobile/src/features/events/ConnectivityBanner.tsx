@@ -17,7 +17,7 @@ export function ConnectivityBanner() {
       ) : (
         <WifiOff size={16} color={colors.warning} />
       )}
-      <AppText variant="caption12" style={styles.text}>
+      <AppText variant="caption" style={styles.text}>
         {reconnecting
           ? 'Bağlantı geri geliyor…'
           : 'Çevrimdışısın. Son yüklenen içerikler gösteriliyor.'}

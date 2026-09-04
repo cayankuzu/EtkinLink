@@ -159,16 +159,16 @@ export function EventDetailScreen({ route, navigation }: Props) {
         <View style={styles.contentSheet}>
           <View style={styles.topMeta}>
             <View style={styles.categoryBadge}>
-              <AppText variant="tiny11" tone="brand" numberOfLines={1}>
+              <AppText variant="caption" tone="brand" numberOfLines={1}>
                 {event.categories[0] ?? 'Etkinlik'}
               </AppText>
             </View>
-            <AppText variant="caption12" tone="tertiary">
+            <AppText variant="caption" tone="tertiary">
               {formatEventDate(event.startAt)}
             </AppText>
           </View>
 
-          <AppText variant="heading24">{event.title}</AppText>
+          <AppText variant="headingXl">{event.title}</AppText>
 
           <AppButton
             label={event.saved ? 'Kaydedildi' : 'Etkinliği kaydet'}
@@ -215,7 +215,7 @@ export function EventDetailScreen({ route, navigation }: Props) {
                   key={category.toLocaleLowerCase('tr-TR')}
                   style={styles.secondaryCategory}
                 >
-                  <AppText variant="tiny11" tone="secondary">
+                  <AppText variant="caption" tone="secondary">
                     {category}
                   </AppText>
                 </View>
@@ -224,9 +224,9 @@ export function EventDetailScreen({ route, navigation }: Props) {
           ) : null}
 
           <View style={styles.section}>
-            <AppText variant="heading18">Etkinlik hakkında</AppText>
+            <AppText variant="headingSm">Etkinlik hakkında</AppText>
             <AppText
-              variant="body15"
+              variant="body"
               tone="secondary"
               selectable
               numberOfLines={descriptionExpanded ? undefined : 4}
@@ -247,7 +247,7 @@ export function EventDetailScreen({ route, navigation }: Props) {
                   pressed && styles.pressed,
                 ]}
               >
-                <AppText variant="label14" tone="brand">
+                <AppText variant="labelSm" tone="brand">
                   {descriptionExpanded ? 'Daralt' : 'Devamını göster'}
                 </AppText>
               </Pressable>
@@ -259,7 +259,7 @@ export function EventDetailScreen({ route, navigation }: Props) {
           ) : null}
 
           <View style={styles.section}>
-            <AppText variant="heading18">Etkinlik bilgileri</AppText>
+            <AppText variant="headingSm">Etkinlik bilgileri</AppText>
             <View style={styles.infoCard}>
               <EventInfoRow
                 icon={Ticket}
@@ -283,7 +283,7 @@ export function EventDetailScreen({ route, navigation }: Props) {
 
           <View style={styles.notice}>
             <InfoIcon size={20} color={colors.brand} />
-            <AppText variant="caption12" tone="brand" style={styles.noticeText}>
+            <AppText variant="caption" tone="brand" style={styles.noticeText}>
               Oda, etkinlikten 13 gün önce açılır. Katıldığında diğer
               katılımcılarla sohbet edebilir ve eşleşebilirsin.
             </AppText>
@@ -292,7 +292,7 @@ export function EventDetailScreen({ route, navigation }: Props) {
           <View style={styles.sourceNotice}>
             <ExternalLink size={18} color={colors.textSecondary} />
             <AppText
-              variant="caption12"
+              variant="caption"
               tone="secondary"
               style={styles.noticeText}
             >
@@ -323,8 +323,8 @@ export function EventDetailScreen({ route, navigation }: Props) {
               <View style={styles.profileGateHeader}>
                 <InfoIcon size={20} color={colors.danger} />
                 <View style={styles.profileGateCopy}>
-                  <AppText variant="label14">Profil kontrol edilemedi</AppText>
-                  <AppText variant="caption12" tone="secondary">
+                  <AppText variant="labelSm">Profil kontrol edilemedi</AppText>
+                  <AppText variant="caption" tone="secondary">
                     Katılım koşullarını gösterebilmek için profilini yeniden
                     kontrol etmeliyiz.
                   </AppText>
@@ -339,7 +339,7 @@ export function EventDetailScreen({ route, navigation }: Props) {
                   pressed && styles.pressed,
                 ]}
               >
-                <AppText variant="label14" tone="brand">
+                <AppText variant="labelSm" tone="brand">
                   Tekrar kontrol et
                 </AppText>
               </Pressable>
@@ -349,10 +349,10 @@ export function EventDetailScreen({ route, navigation }: Props) {
               <View style={styles.profileGateHeader}>
                 <InfoIcon size={20} color={colors.brand} />
                 <View style={styles.profileGateCopy}>
-                  <AppText variant="label14">
+                  <AppText variant="labelSm">
                     Katılım için profilini tamamla
                   </AppText>
-                  <AppText variant="caption12" tone="secondary">
+                  <AppText variant="caption" tone="secondary">
                     Etkinliğe katılabilmen için aşağıdaki adımlar eksik:
                   </AppText>
                 </View>
@@ -370,10 +370,10 @@ export function EventDetailScreen({ route, navigation }: Props) {
                     ]}
                   >
                     <View style={styles.profileStepBullet} />
-                    <AppText variant="body14" style={styles.profileStepLabel}>
+                    <AppText variant="body" style={styles.profileStepLabel}>
                       {step.label}
                     </AppText>
-                    <AppText variant="caption12" tone="brand">
+                    <AppText variant="caption" tone="brand">
                       Düzenle
                     </AppText>
                   </Pressable>
@@ -390,11 +390,7 @@ export function EventDetailScreen({ route, navigation }: Props) {
             />
           ) : null}
           {actionError ? (
-            <AppText
-              variant="caption12"
-              tone="danger"
-              accessibilityRole="alert"
-            >
+            <AppText variant="caption" tone="danger" accessibilityRole="alert">
               {actionError}
             </AppText>
           ) : null}
@@ -502,8 +498,8 @@ export function EventDetailScreen({ route, navigation }: Props) {
       >
         <View style={styles.backdrop}>
           <View style={styles.confirmSheet} accessibilityViewIsModal>
-            <AppText variant="heading20">Etkinliğe katıl</AppText>
-            <AppText variant="body14" tone="secondary">
+            <AppText variant="headingMd">Etkinliğe katıl</AppText>
+            <AppText variant="body" tone="secondary">
               Katılımın beyana dayanır. Etkinlik odası açıldığında sohbet ve bu
               etkinliğe özel eşleşme alanına erişebilirsin.
             </AppText>

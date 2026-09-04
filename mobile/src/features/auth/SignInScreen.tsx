@@ -66,7 +66,7 @@ export function SignInScreen({ navigation }: Props) {
               pressed && styles.pressed,
             ]}
           >
-            <AppText variant="label15" tone="brand">
+            <AppText variant="label" tone="brand">
               Hesap oluştur
             </AppText>
           </Pressable>
@@ -74,8 +74,8 @@ export function SignInScreen({ navigation }: Props) {
       }
     >
       <View style={styles.formIntro}>
-        <AppText variant="heading20">Hesabına giriş yap</AppText>
-        <AppText variant="body14" tone="secondary">
+        <AppText variant="headingMd">Hesabına giriş yap</AppText>
+        <AppText variant="body" tone="secondary">
           Kayıt olurken kullandığın bilgilerle devam et.
         </AppText>
       </View>
@@ -143,7 +143,7 @@ export function SignInScreen({ navigation }: Props) {
         hitSlop={8}
         style={({ pressed }) => [styles.forgot, pressed && styles.pressed]}
       >
-        <AppText variant="label14" tone="brand">
+        <AppText variant="labelSm" tone="brand">
           Şifremi unuttum
         </AppText>
       </Pressable>
@@ -160,7 +160,7 @@ export function SignInScreen({ navigation }: Props) {
 
       <View style={styles.trustNote}>
         <ShieldCheck size={18} color={colors.success} />
-        <AppText variant="caption12" tone="secondary" style={styles.trustText}>
+        <AppText variant="caption" tone="secondary" style={styles.trustText}>
           Oturum bilgilerin güvenli bağlantı üzerinden korunur.
         </AppText>
       </View>
@@ -172,7 +172,7 @@ function InlineError({ message }: { message: string }) {
   return (
     <View style={styles.errorCard} accessibilityRole="alert">
       <AlertCircle size={18} color={colors.danger} />
-      <AppText variant="caption12" tone="danger" style={styles.errorText}>
+      <AppText variant="caption" tone="danger" style={styles.errorText}>
         {message}
       </AppText>
     </View>

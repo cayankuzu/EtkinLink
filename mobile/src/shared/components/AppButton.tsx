@@ -98,7 +98,7 @@ export function AppButton({
         <View style={styles.content}>
           {Icon ? <Icon size={18} color={contentColor} /> : null}
           <AppText
-            variant="label15"
+            variant="label"
             align="center"
             style={styles.label}
             tone={

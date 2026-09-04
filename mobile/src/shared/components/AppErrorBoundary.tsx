@@ -39,7 +39,7 @@ export class AppErrorBoundary extends Component<
 
     return (
       <View style={styles.container} accessibilityRole="alert">
-        <AppText variant="heading20" align="center">
+        <AppText variant="headingMd" align="center">
           Bir sorun oluştu
         </AppText>
         <AppText tone="secondary" align="center">

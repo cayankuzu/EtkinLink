@@ -104,7 +104,7 @@ export function ProfileVisibilityScreen({ navigation }: Props) {
           onPress={navigation.goBack}
           style={styles.headerButton}
         />
-        <AppText variant="heading20">Profil görünürlüğü</AppText>
+        <AppText variant="headingMd">Profil görünürlüğü</AppText>
         <View style={styles.spacer} />
       </View>
       <VisibilityCard
@@ -121,12 +121,12 @@ export function ProfileVisibilityScreen({ navigation }: Props) {
         saving={genderSave.isPending}
         onChange={value => genderSave.mutate(value)}
       />
-      <AppText variant="caption12" tone="secondary">
+      <AppText variant="caption" tone="secondary">
         Seçimlerin aday kartlarında, profil detaylarında ve sohbetten açılan
         profillerde uygulanır.
       </AppText>
       {ageSave.error || genderSave.error ? (
-        <AppText variant="caption12" tone="danger">
+        <AppText variant="caption" tone="danger">
           {toAppError(ageSave.error ?? genderSave.error).message}
         </AppText>
       ) : null}
@@ -151,15 +151,15 @@ function VisibilityCard({
   return (
     <View style={styles.card}>
       <View style={styles.cardTitle}>
-        <AppText variant="heading18">{title}</AppText>
-        <AppText variant="caption12" tone="secondary">
+        <AppText variant="headingSm">{title}</AppText>
+        <AppText variant="caption" tone="secondary">
           {description}
         </AppText>
       </View>
       <View style={styles.switchRow}>
         <View style={styles.switchCopy}>
-          <AppText variant="label15">Profilde göster</AppText>
-          <AppText variant="caption12" tone="secondary">
+          <AppText variant="label">Profilde göster</AppText>
+          <AppText variant="caption" tone="secondary">
             {visible
               ? 'Herkes bu bilgiyi görebilir.'
               : 'Bu bilgi profilinde gizlenir.'}

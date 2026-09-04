@@ -110,7 +110,7 @@ export function PublicProfileScreen({ route, navigation }: Props) {
     >
       <View style={styles.header}>
         <IconButton icon={ArrowLeft} label="Geri" onPress={navigation.goBack} />
-        <AppText variant="heading20">Profil</AppText>
+        <AppText variant="headingMd">Profil</AppText>
         <View style={styles.spacer} />
       </View>
       <ProfileView

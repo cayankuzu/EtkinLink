@@ -135,11 +135,7 @@ export function SignUpReviewScreen({ navigation }: Props) {
             <View style={styles.documentIcon}>
               <FileText size={20} color={colors.brand} />
             </View>
-            <AppText
-              variant="label15"
-              tone="brand"
-              style={styles.documentTitle}
-            >
+            <AppText variant="label" tone="brand" style={styles.documentTitle}>
               {document.title}
             </AppText>
             <ExternalLink size={19} color={colors.brand} />
@@ -157,7 +153,7 @@ export function SignUpReviewScreen({ navigation }: Props) {
         <View style={[styles.checkbox, accepted && styles.checkboxChecked]}>
           {accepted ? <Check size={15} color={colors.textInverse} /> : null}
         </View>
-        <AppText variant="body14" tone="secondary" style={styles.termsText}>
+        <AppText variant="body" tone="secondary" style={styles.termsText}>
           Kullanım Koşulları'nı, Gizlilik Politikası'nı ve KVKK Aydınlatma
           Metni'ni okudum; kabul ediyorum.
         </AppText>
@@ -166,8 +162,8 @@ export function SignUpReviewScreen({ navigation }: Props) {
       <View style={styles.emailNote}>
         <ShieldCheck size={20} color={colors.success} />
         <View style={styles.emailCopy}>
-          <AppText variant="label14">Doğrulama e-postası</AppText>
-          <AppText variant="caption12" tone="secondary">
+          <AppText variant="labelSm">Doğrulama e-postası</AppText>
+          <AppText variant="caption" tone="secondary">
             Hesabın bu son adımdan sonra oluşturulacak ve doğrulama bağlantısı{' '}
             {draft.email} adresine gönderilecek.
           </AppText>
@@ -175,7 +171,7 @@ export function SignUpReviewScreen({ navigation }: Props) {
       </View>
 
       {error ? (
-        <AppText variant="caption12" tone="danger" accessibilityRole="alert">
+        <AppText variant="caption" tone="danger" accessibilityRole="alert">
           {error}
         </AppText>
       ) : null}

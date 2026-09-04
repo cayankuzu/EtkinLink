@@ -48,7 +48,7 @@ export function DirectMessageBubble({
             failed && styles.bubbleFailed,
           ]}
         >
-          <AppText variant="body14" tone={mine ? 'inverse' : 'primary'}>
+          <AppText variant="body" tone={mine ? 'inverse' : 'primary'}>
             {message.body}
           </AppText>
         </View>
@@ -62,7 +62,7 @@ export function DirectMessageBubble({
           ) : mine ? (
             <Check size={13} color={colors.textTertiary} />
           ) : null}
-          <AppText variant="tiny11" tone="tertiary">
+          <AppText variant="caption" tone="tertiary">
             {message.status === 'sending'
               ? `Gönderiliyor · ${formatMessageDateTime(message.createdAt)}`
               : failed

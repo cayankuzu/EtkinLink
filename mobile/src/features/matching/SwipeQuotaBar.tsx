@@ -45,7 +45,7 @@ export function SwipeQuotaBar({ quota }: Props) {
           value={quota.remainingPasses}
           label="geç"
         />
-        <AppText variant="tiny11" tone="secondary">
+        <AppText variant="caption" tone="secondary">
           {formatDuration(remainingMs)}
         </AppText>
       </View>
@@ -68,7 +68,7 @@ function QuotaCount({
   return (
     <View style={styles.count} accessibilityLabel={`${value} ${label} hakkı`}>
       {icon}
-      <AppText variant="caption12">{value}</AppText>
+      <AppText variant="caption">{value}</AppText>
     </View>
   );
 }

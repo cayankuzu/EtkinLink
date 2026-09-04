@@ -29,7 +29,7 @@ export function Chip({
       ]}
       {...props}
     >
-      <AppText variant="label14" tone={selected ? 'inverse' : 'primary'}>
+      <AppText variant="labelSm" tone={selected ? 'inverse' : 'primary'}>
         {label}
       </AppText>
     </Pressable>

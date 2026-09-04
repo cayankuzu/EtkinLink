@@ -28,7 +28,7 @@ export function CityPicker({ value, onChange, error }: CityPickerProps) {
 
   return (
     <View style={styles.wrapper}>
-      <AppText variant="label14">Şehir</AppText>
+      <AppText variant="labelSm">Şehir</AppText>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Şehir seç"
@@ -48,7 +48,7 @@ export function CityPicker({ value, onChange, error }: CityPickerProps) {
         <ChevronDown size={20} color={colors.textSecondary} />
       </Pressable>
       {error ? (
-        <AppText variant="caption12" tone="danger">
+        <AppText variant="caption" tone="danger">
           {error}
         </AppText>
       ) : null}
@@ -61,8 +61,8 @@ export function CityPicker({ value, onChange, error }: CityPickerProps) {
         <View style={styles.modal}>
           <View style={styles.header}>
             <View>
-              <AppText variant="heading20">Şehir seç</AppText>
-              <AppText variant="caption12" tone="secondary">
+              <AppText variant="headingMd">Şehir seç</AppText>
+              <AppText variant="caption" tone="secondary">
                 Türkiye'nin 81 ili
               </AppText>
             </View>
@@ -102,7 +102,7 @@ export function CityPicker({ value, onChange, error }: CityPickerProps) {
                 ]}
               >
                 <AppText
-                  variant={item === value ? 'label15' : 'body15'}
+                  variant={item === value ? 'label' : 'body'}
                   tone={item === value ? 'brand' : 'primary'}
                 >
                   {item}

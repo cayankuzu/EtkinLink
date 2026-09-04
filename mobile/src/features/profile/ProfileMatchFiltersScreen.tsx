@@ -166,7 +166,7 @@ function MatchFilterForm({
           onPress={onBack}
           style={styles.headerButton}
         />
-        <AppText variant="heading20">Eşleşme filtreleri</AppText>
+        <AppText variant="headingMd">Eşleşme filtreleri</AppText>
         <View style={styles.headerIcon}>
           <Crown size={21} color={colors.warning} />
         </View>
@@ -186,12 +186,12 @@ function MatchFilterForm({
           )}
         </View>
         <View style={styles.bannerCopy}>
-          <AppText variant="label15">
+          <AppText variant="label">
             {initial.premium
               ? 'Premium filtrelerin açık'
               : 'Premium eşleşme filtreleri'}
           </AppText>
-          <AppText variant="caption12" tone="secondary">
+          <AppText variant="caption" tone="secondary">
             {initial.premium
               ? 'Tercihlerin bütün etkinliklerdeki eşleşme adaylarına uygulanır.'
               : `${premiumComingSoonMessage} Seçenekleri şimdiden inceleyebilirsin.`}
@@ -216,7 +216,7 @@ function MatchFilterForm({
           ))}
         </View>
         {genders.length === 0 ? (
-          <AppText variant="caption12" tone="danger">
+          <AppText variant="caption" tone="danger">
             En az bir seçenek işaretlenmeli.
           </AppText>
         ) : null}
@@ -260,7 +260,7 @@ function MatchFilterForm({
           showCounter={false}
           onChangeText={setInterestQuery}
         />
-        <AppText variant="caption12" tone="secondary">
+        <AppText variant="caption" tone="secondary">
           {interestIds.length} ilgi alanı seçildi
         </AppText>
         <View style={styles.optionList}>
@@ -274,7 +274,7 @@ function MatchFilterForm({
             />
           ))}
           {visibleInterests.length === 0 ? (
-            <AppText variant="body14" tone="secondary">
+            <AppText variant="body" tone="secondary">
               Aramana uygun ilgi alanı bulunamadı.
             </AppText>
           ) : null}
@@ -282,14 +282,14 @@ function MatchFilterForm({
       </FilterSection>
 
       <View style={styles.infoNote}>
-        <AppText variant="caption12" tone="secondary">
+        <AppText variant="caption" tone="secondary">
           Mesafe filtresi kullanılmaz; adaylar aynı etkinliğin katılımcıları
           arasından gösterilir.
         </AppText>
       </View>
 
       {save.error ? (
-        <AppText variant="caption12" tone="danger" accessibilityRole="alert">
+        <AppText variant="caption" tone="danger" accessibilityRole="alert">
           {toAppError(save.error).message}
         </AppText>
       ) : null}
@@ -322,21 +322,21 @@ function FilterSection({
     <View style={[styles.section, disabled ? styles.sectionDisabled : null]}>
       <View style={styles.sectionHeading}>
         <View style={styles.sectionTitleRow}>
-          <AppText variant="heading18" style={styles.sectionTitle}>
+          <AppText variant="headingSm" style={styles.sectionTitle}>
             {title}
           </AppText>
           <View style={styles.premiumTag}>
             <Crown size={13} color={colors.warning} />
-            <AppText variant="tiny11" style={styles.premiumTagText}>
+            <AppText variant="caption" style={styles.premiumTagText}>
               Premium
             </AppText>
           </View>
         </View>
-        <AppText variant="caption12" tone="secondary">
+        <AppText variant="caption" tone="secondary">
           {description}
         </AppText>
         {disabled ? (
-          <AppText variant="caption12" style={styles.comingSoonText}>
+          <AppText variant="caption" style={styles.comingSoonText}>
             {premiumComingSoonMessage}
           </AppText>
         ) : null}
