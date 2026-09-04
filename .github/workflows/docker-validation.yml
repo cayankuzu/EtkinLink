@@ -36,6 +36,13 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
+      # The runner's default `docker` driver has no OCI exporter, which is what
+      # the determinism comparison and the provenance attestation both write to.
+      # A docker-container builder supports both, so provenance stays on rather
+      # than being dropped to fit the driver.
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        with:
+          driver: docker-container
       - name: Validate every Compose profile
         shell: bash
         run: |
