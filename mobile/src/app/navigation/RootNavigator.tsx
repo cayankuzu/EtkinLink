@@ -43,6 +43,7 @@ import { RoomsScreen } from '@features/rooms/RoomsScreen';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import {
   getFocusedRouteNameFromRoute,
+  getStateFromPath,
   NavigationContainer,
 } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -58,6 +59,7 @@ import {
 import { Image, StatusBar, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { sanitizeDeepLinkPath } from './deepLinkPath';
 import {
   navigationRef,
   useNotificationNavigation,
@@ -100,12 +102,26 @@ function ProfileIcon({ color }: { color: string }) {
   return <UserRound size={20} color={color} />;
 }
 
+const linkingConfig = {
+  screens: {
+    NewPassword: 'auth/reset-password',
+  },
+};
+
 const linking = {
   prefixes: ['etkinlink://'],
-  config: {
-    screens: {
-      NewPassword: 'auth/reset-password',
-    },
+  config: linkingConfig,
+  // Any app on the device can open an `etkinlink://` URL, and React
+  // Navigation's default parser would hand its query string to a decoder with
+  // an unfixed denial-of-service advisory. No supported route uses a query
+  // string, so bound the path first. See `deepLinkPath.ts`.
+  getStateFromPath: (
+    path: string,
+    options?: Parameters<typeof getStateFromPath>[1],
+  ) => {
+    const safePath = sanitizeDeepLinkPath(path);
+    if (safePath === undefined) return undefined;
+    return getStateFromPath(safePath, options);
   },
 };
 
