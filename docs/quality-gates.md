@@ -49,7 +49,7 @@ Aynı yerel ağaçta (`chore/aaa-mvp-hardening-docker-cloudflare-ota-push`) çal
 | Compose sözleşmesi + mock birimi   | `npm run docker:config`            | 9/9 geçti                                                                                                                    |
 | Mobil zincir                       | `npm --prefix mobile run verify`   | Geçti; Jest **50 suite / 330 test**                                                                                          |
 | Erişilebilirlik guardı + self-test | `accessibility:guards(:test)`      | 74 ekran dosyası temiz; 8/8 self-test                                                                                        |
-| Hardcode guardı + self-test        | `hardcode:guards(:test)`           | 143 kaynak dosyası ham renk/sayfa boyutu içermiyor; 11/11 self-test                                                          |
+| Hardcode guardı + self-test        | `hardcode:guards(:test)`           | 144 kaynak dosyası ham renk/sayfa boyutu içermiyor; 11/11 self-test                                                          |
 | Coverage ratchet                   | `npm run coverage:ratchet`         | PASS; global statement `%45,53`, branch `%36,74`, function `%34,22`, line `%46,92`; changed-critical statement `%93,42`     |
 | Production dependency audit        | `npm run audit:production`         | Geçti; `npm audit --omit=dev` 0 high/critical, 9 moderate ([risk-register.md](risk-register.md) D-01–D-03)                  |
 | Expo Doctor                        | `npx expo-doctor`                  | **20/20**                                                                                                                    |

@@ -6,12 +6,12 @@ Bu rapor, mevcut kaynak ağacında ölçülen tekrar ve sabit-değer dağılım�
 
 | Ölçüm | Değer |
 | ----- | ----- |
-| Üretim kaynağı (`mobile/src`, test dışı) | 141 dosya / 26.296 satır |
-| Test kaynağı | 47 dosya / 7.584 satır |
+| Üretim kaynağı (`mobile/src`, test dışı) | 142 dosya / 26.349 satır |
+| Test kaynağı | 48 dosya / 7.647 satır |
 | Supabase Edge Function kaynağı | 12 dosya |
 | Cloudflare Worker kaynağı | 5 dosya |
 | Migration | 57 |
-| Modül bağımlılık grafiği | 243 modül / 1.003 bağımlılık, ihlal yok |
+| Modül bağımlılık grafiği | 245 modül / 1.006 bağımlılık, ihlal yok |
 | Kullanılmayan export/dosya (`knip`) | 0 |
 | `TODO`/`FIXME`/`HACK` | 0 |
 | Boş `catch` bloğu | 0 |
@@ -82,4 +82,4 @@ Prompt'un "her `16`, `8` veya `300` değerini anlamsız global sabit yapma" kura
 
 ## Doğrulama
 
-Aynı yerel ağaçta çalıştırılan komutlar ve sonuçları [quality-gates.md](quality-gates.md) içindeki `2026-09-03 güncel yerel sonuç` tablosundadır.
+Aynı yerel ağaçta çalıştırılan komutlar ve sonuçları [quality-gates.md](quality-gates.md) içindeki `2026-09-04 güncel yerel sonuç` tablosundadır.

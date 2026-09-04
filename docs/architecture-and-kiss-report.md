@@ -6,9 +6,9 @@ Bu rapor, mevcut mimarinin ölçülen durumunu ve bu hardening turunda **eklenme
 
 | Ölçüm | Değer |
 | ----- | ----- |
-| Mobil üretim kaynağı | 141 dosya / 26.296 satır |
-| Mobil test kaynağı | 47 dosya / 7.584 satır (test/üretim oranı ≈ %29) |
-| Modül grafiği | 243 modül / 1.003 bağımlılık |
+| Mobil üretim kaynağı | 142 dosya / 26.349 satır |
+| Mobil test kaynağı | 48 dosya / 7.647 satır (test/üretim oranı ≈ %29) |
+| Modül grafiği | 245 modül / 1.006 bağımlılık |
 | Bağımlılık ihlali | 0 (`dependency-cruiser`) |
 | Döngüsel bağımlılık | 0 |
 | Ölü export/dosya | 0 (`knip`) |
@@ -70,7 +70,7 @@ Prompt'un izin verdiği fakat **ölçülmüş ihtiyaç olmadığı için eklenme
 | DI container | Eklenmedi | Constructor/parametre enjeksiyonu test dikişi için yeterli |
 | Tek implementasyonlu servisler için interface | Eklenmedi | Doğrudan modül mock'u yeterli |
 | Yeni durum yönetimi kütüphanesi | Eklenmedi | TanStack Query (sunucu) + Zustand (oturum/istemci) ayrımı tutarlı |
-| Paylaşılan telemetry mock modülü | Eklenmedi | Üç test dosyasında üç satırlık mock, alias altyapısından ucuz |
+| Paylaşılan telemetry mock modülü | Eklenmedi | Üç test dosyasında tek satırlık mock girdisi, alias altyapısından ucuz |
 
 Bu turda eklenen tek yeni altyapı, mevcut akışları koruyan fail-closed guard'lar ve bunların self-test'leridir; hiçbiri çalışma zamanı kodu değildir.
 
@@ -96,9 +96,9 @@ Bu turda eklenen tek yeni altyapı, mevcut akışları koruyan fail-closed guard
 
 | Kontrol | Sonuç |
 | ------- | ----- |
-| `npm --prefix mobile run architecture` | 243 modül / 1.003 bağımlılık, ihlal yok |
+| `npm --prefix mobile run architecture` | 245 modül / 1.006 bağımlılık, ihlal yok |
 | `npm --prefix mobile run deadcode` | temiz |
 | `npm --prefix mobile run typecheck` | strict, hata yok |
 | `npm --prefix mobile run lint` | 0 uyarı |
-| `npm --prefix mobile run test` | 49 suite / 320 test |
+| `npm --prefix mobile run test` | 50 suite / 330 test |
 | `npm run docker:test` | 57 migration replay, `public` lint 0 bulgu, 7 dosya / 283 pgTAP, dump/restore, Edge/Worker contract |
