@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { sanitizeOutput, unsafeEvidenceLabels } from "./_common.mjs";
+import {
+  sanitizeOutput,
+  summarizeSupabaseStart,
+  unsafeEvidenceLabels,
+} from "./_common.mjs";
 
 test("sanitizeOutput redacts JSON, env, JWT, database, and bearer secrets", () => {
   const source = [
@@ -57,4 +61,51 @@ test("unsafeEvidenceLabels rejects raw secrets but accepts redacted evidence", (
     ),
     [],
   );
+});
+
+test("summarizeSupabaseStart keeps replay evidence and withholds every credential", () => {
+  const raw = [
+    JSON.stringify({
+      DB_URL: "postgresql://postgres:local-db-password@127.0.0.1:55322/postgres",
+      API_URL: "http://127.0.0.1:55321",
+      PUBLISHABLE_KEY: "sb_publishable_localvalue",
+      SECRET_KEY: "sb_secret_localvalue",
+      SERVICE_ROLE_KEY: `eyJ${"a".repeat(80)}`,
+      S3_PROTOCOL_ACCESS_KEY_SECRET: "s3-protocol-secret-value",
+    }),
+    "Starting database...",
+    "Initialising schema...",
+    "Applying migration 20260805220000_initial_production_schema.sql...",
+    "Seeding data from supabase/seed.sql...",
+  ].join("\n");
+
+  const summary = summarizeSupabaseStart(raw);
+
+  for (const secret of [
+    "local-db-password",
+    "sb_publishable_localvalue",
+    "sb_secret_localvalue",
+    `eyJ${"a".repeat(80)}`,
+    "s3-protocol-secret-value",
+  ]) {
+    assert.equal(summary.includes(secret), false, `leaked ${secret}`);
+  }
+  assert.deepEqual(unsafeEvidenceLabels(sanitizeOutput(summary)), []);
+  assert.match(
+    summary,
+    /Applying migration 20260805220000_initial_production_schema\.sql\.\.\./u,
+  );
+  assert.match(summary, /Seeding data from supabase\/seed\.sql\.\.\./u);
+  // Field names are evidence that the stack came up; their values never are.
+  assert.match(summary, /stack status fields \(values withheld\): .*SECRET_KEY/u);
+  assert.match(summary, /summary: 5 evidence lines kept, 0 unrecognised lines withheld/u);
+});
+
+test("summarizeSupabaseStart drops unrecognised output instead of forwarding it", () => {
+  const summary = summarizeSupabaseStart(
+    ["Starting database...", "anon key: sb_publishable_surprisingformat"].join("\n"),
+  );
+
+  assert.equal(summary.includes("sb_publishable_surprisingformat"), false);
+  assert.match(summary, /summary: 1 evidence lines kept, 1 unrecognised lines withheld/u);
 });

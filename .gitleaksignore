@@ -5,3 +5,8 @@ b675bb82fe2fe0109c10a42c4b8679f9b09b2b87:mobile/src/test/setup.ts:generic-api-ke
 b675bb82fe2fe0109c10a42c4b8679f9b09b2b87:supabase/functions/_shared/workerAuth.test.ts:generic-api-key:28
 # Manual release checklist names credential categories only; it contains no credential value.
 docs/MANUAL_STEPS.md:generic-api-key:77
+# Reviewed: the JWT-shaped string at this line is a synthetic redaction fixture
+# (header `{"alg":"none"}`, payload `{"sub":"fixture"}`, literal third segment),
+# never a credential. The working tree no longer carries the credential-shaped
+# form; this commit-scoped fingerprint only covers the immutable history entry.
+6c91cd425710fd199e21c5ca373b69f99fbf3aff:mobile/src/shared/lib/telemetry.test.ts:generic-api-key:52
