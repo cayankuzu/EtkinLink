@@ -2,7 +2,7 @@
 
 ## Otomatik kapılar
 
-- `npm run verify`: TypeScript strict, ESLint, Prettier, Dependency Cruiser, Knip, güvenlik/uyumluluk/performans/erişilebilirlik/tasarım-tokenı guard'ları ve bunların self-test'leri, kritik akış referansları, OTA classifier, release signer testleri ve Jest.
+- `npm run verify`: TypeScript strict, ESLint, Prettier, Dependency Cruiser, Knip, güvenlik/uyumluluk/performans/erişilebilirlik/hardcode guard'ları ve bunların self-test'leri, kritik akış referansları, OTA classifier, release signer testleri ve Jest.
 - Jest tüm `src` dosyalarını coverage kapsamında tutar. Kapsam listesi daraltılmaz.
 - Jest global eşik havuzu statement `%36`, branch `%27`, function `%26`, line `%37` altında fail olur. Dosya-bazlı eşikler nedeniyle bu havuzun güncel sonucu sırasıyla `%37,02 / %27,71 / %26,90 / %38,39`dur.
 - Ayrı ratchet tüm-dosya kapsamını `%38 / %28 / %28 / %39` altına düşürmez; 17 değişen kritik uygulama/güvenlik modülünü ayrı sabit tabanlarla denetler.
