@@ -17,6 +17,8 @@
     "performance:guards": "node ./scripts/check-performance-budgets.mjs",
     "accessibility:guards": "node ./scripts/check-accessibility-guards.mjs",
     "touch-target:guards": "node ./scripts/check-touch-targets.mjs",
+    "screen-state:matrix": "node ./scripts/build-screen-state-matrix.mjs",
+    "screen-state:guards": "node ./scripts/build-screen-state-matrix.mjs --check",
     "touch-target:guards:test": "node --test ./scripts/check-touch-targets.test.mjs",
     "contrast:guards": "node ./scripts/check-contrast.mjs",
     "accessibility:guards:test": "node --test ./scripts/check-accessibility-guards.test.mjs",
@@ -39,7 +41,7 @@
     "test": "jest --runInBand",
     "test:coverage": "jest --runInBand --coverage",
     "coverage:ratchet": "node ./scripts/check-coverage-ratchet.mjs",
-    "verify": "npm run typecheck && npm run lint && npm run format:check && npm run architecture && npm run deadcode && npm run security:guards && npm run compatibility:guards && npm run performance:guards && npm run accessibility:guards && npm run accessibility:guards:test && npm run contrast:guards && npm run touch-target:guards && npm run touch-target:guards:test && npm run hardcode:guards && npm run hardcode:guards:test && npm run critical-flows && npm run ota:classifier:test && npm run release:signer:test && npm run test",
+    "verify": "npm run typecheck && npm run lint && npm run format:check && npm run architecture && npm run deadcode && npm run security:guards && npm run compatibility:guards && npm run performance:guards && npm run accessibility:guards && npm run accessibility:guards:test && npm run contrast:guards && npm run touch-target:guards && npm run touch-target:guards:test && npm run screen-state:guards && npm run hardcode:guards && npm run hardcode:guards:test && npm run critical-flows && npm run ota:classifier:test && npm run release:signer:test && npm run test",
     "build:debug": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-expo-debug.ps1",
     "doctor": "npx expo-doctor"
   },
