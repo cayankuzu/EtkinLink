@@ -10,7 +10,7 @@ export const colors = {
   brandSoft: '#EEEAFE',
   brandSubtle: '#F5F2FF',
   infoSoft: '#EEF4FF',
-  accent: '#FF6B5E',
+  accent: '#ED6457',
   accentSoft: '#FFF0EE',
   // Coral is a fill, not a text colour: #FF6B5E only reaches 2.52:1 on
   // accentSoft. Every other soft surface here already pairs with a dark
@@ -19,7 +19,7 @@ export const colors = {
   accentStrong: '#C2410C',
   textPrimary: '#101828',
   textSecondary: '#475467',
-  textTertiary: '#667085',
+  textTertiary: '#646E82',
   textInverse: '#FFFFFF',
   iconPrimary: '#344054',
   border: '#E4E7EC',
@@ -28,7 +28,7 @@ export const colors = {
   successSoft: '#EAFBF4',
   warning: '#B54708',
   warningSoft: '#FFF4E5',
-  danger: '#D92D20',
+  danger: '#D22C1F',
   dangerPressed: '#C7353B',
   dangerSoft: '#FFF0F0',
   overlay: 'rgba(16, 24, 40, 0.56)',
@@ -180,6 +180,15 @@ export const shadows = {
 export const layout = {
   screenPadding: 12,
   touchTarget: 48,
+  /**
+   * The floor for the area a finger actually gets. Material's accessibility
+   * guidance asks for 48dp and Apple's HIG for 44pt; the larger number applies
+   * on both platforms so one control does not behave two ways. A control may be
+   * *drawn* smaller than this — the visual language uses 36-44dp affordances on
+   * photos, cards and chips — but the area that answers a touch may not, so the
+   * difference is made up with `hitSlop` rather than by moving pixels.
+   */
+  minimumTouchTarget: 48,
   compactTouchTarget: 44,
   controlHeight: 44,
   inputHeight: 48,
@@ -188,3 +197,16 @@ export const layout = {
   maxContentWidth: 640,
   maxModalWidth: 520,
 } as const;
+
+/**
+ * The `hitSlop` a control drawn at `size` dp needs for the area a finger gets to
+ * reach `layout.minimumTouchTarget`. Returns 0 when the control is already large
+ * enough, so it never claims space it does not need and never overlaps a
+ * neighbour that was already compliant.
+ *
+ * Pass the rendered dimension — `styles.saveButton.height`, not the number
+ * repeated — so the slop follows the style if the design changes.
+ */
+export function touchSlopFor(size: number): number {
+  return Math.max(0, Math.ceil((layout.minimumTouchTarget - size) / 2));
+}

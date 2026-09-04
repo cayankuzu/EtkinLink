@@ -9,7 +9,14 @@ import {
 } from '@shared/components';
 import { formatEventDate } from '@shared/lib/date';
 import { toAppError } from '@shared/lib/errors';
-import { colors, layout, radius, shadows, spacing } from '@shared/theme';
+import {
+  colors,
+  layout,
+  radius,
+  shadows,
+  spacing,
+  touchSlopFor,
+} from '@shared/theme';
 import {
   ArrowLeft,
   Bookmark,
@@ -364,6 +371,7 @@ export function EventDetailScreen({ route, navigation }: Props) {
                     accessibilityRole="button"
                     accessibilityLabel={`${step.label}. Düzenlemeye git`}
                     onPress={() => openProfileCompletion(step.destination)}
+                    hitSlop={touchSlopFor(styles.profileStep.minHeight)}
                     style={({ pressed }) => [
                       styles.profileStep,
                       pressed && styles.pressed,
@@ -637,7 +645,7 @@ const styles = StyleSheet.create({
   profileGateCopy: { flex: 1, gap: 3 },
   profileStepList: { gap: spacing.xs },
   profileStep: {
-    minHeight: 40,
+    minHeight: layout.compactTouchTarget,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
