@@ -48,7 +48,7 @@ export function CandidateCard({
         >
           <CalendarDays size={18} color={colors.textInverse} />
           <AppText
-            variant="caption12"
+            variant="caption"
             tone="inverse"
             numberOfLines={1}
             style={styles.eventTitle}
@@ -65,34 +65,34 @@ export function CandidateCard({
           style={styles.gallery}
         />
         <View style={styles.info}>
-          <AppText variant="heading20">
+          <AppText variant="headingMd">
             {candidate.fullName}
             {candidate.age !== null ? `, ${candidate.age}` : ''}
           </AppText>
-          <AppText variant="body14" tone="secondary">
+          <AppText variant="body" tone="secondary">
             @{candidate.username}
           </AppText>
           <View style={styles.metaRow}>
             <MapPin size={16} color={colors.textSecondary} />
-            <AppText variant="body14" tone="secondary">
+            <AppText variant="body" tone="secondary">
               {candidate.city || 'Şehir belirtilmemiş'}
             </AppText>
           </View>
           {candidate.gender ? (
             <View style={styles.metaRow}>
               <UserRound size={16} color={colors.textSecondary} />
-              <AppText variant="body14" tone="secondary">
+              <AppText variant="body" tone="secondary">
                 {getGenderLabel(candidate.gender)}
               </AppText>
             </View>
           ) : null}
           {candidate.bio ? (
-            <AppText variant="body14">{candidate.bio}</AppText>
+            <AppText variant="body">{candidate.bio}</AppText>
           ) : null}
           <View style={styles.interests}>
             {candidate.interests.map(interest => (
               <View key={interest.id} style={styles.interest}>
-                <AppText variant="caption12" tone="brand">
+                <AppText variant="caption" tone="brand">
                   {interest.label}
                 </AppText>
               </View>

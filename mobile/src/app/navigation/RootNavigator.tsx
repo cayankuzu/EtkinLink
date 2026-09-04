@@ -413,15 +413,15 @@ function SplashScreen() {
           accessibilityLabel="EtkinLink"
           style={styles.splashLogo}
         />
-        <AppText variant="body14" tone="secondary" align="center">
+        <AppText variant="body" tone="secondary" align="center">
           Etkinlik etrafında güvenli sosyalleşme
         </AppText>
       </View>
       <View style={[styles.splashFooter, { bottom: insets.bottom + 16 }]}>
-        <AppText variant="tiny11" tone="tertiary" align="center">
+        <AppText variant="caption" tone="tertiary" align="center">
           © 2026 EtkinLink
         </AppText>
-        <AppText variant="tiny11" tone="tertiary" align="center">
+        <AppText variant="caption" tone="tertiary" align="center">
           MeMoDe tarafından
         </AppText>
       </View>
@@ -448,6 +448,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   tabIcon: { marginTop: 1 },
-  tabLabel: { ...typography.tiny11, marginTop: 1 },
+  tabLabel: { ...typography.caption, marginTop: 1 },
   hiddenTabBar: { display: 'none' },
 });

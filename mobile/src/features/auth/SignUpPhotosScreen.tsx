@@ -138,12 +138,12 @@ export function SignUpPhotosScreen({ navigation }: Props) {
       onBack={navigation.goBack}
     >
       <View style={styles.counterRow}>
-        <AppText variant="label14">Profil fotoğrafları</AppText>
+        <AppText variant="labelSm">Profil fotoğrafları</AppText>
         <View
           style={[styles.counter, photos.length >= 3 && styles.counterReady]}
         >
           <AppText
-            variant="caption12"
+            variant="caption"
             tone={photos.length >= 3 ? 'success' : 'brand'}
           >
             {photos.length} / 6
@@ -175,7 +175,7 @@ export function SignUpPhotosScreen({ navigation }: Props) {
                 {selected ? (
                   <View style={styles.selectedBadge}>
                     <Check size={14} color={colors.textInverse} />
-                    <AppText variant="tiny11" tone="inverse">
+                    <AppText variant="caption" tone="inverse">
                       Seçildi
                     </AppText>
                   </View>
@@ -203,7 +203,7 @@ export function SignUpPhotosScreen({ navigation }: Props) {
             <View style={styles.addIcon}>
               <ImagePlus size={28} color={colors.brand} />
             </View>
-            <AppText variant="label14" tone="brand" align="center">
+            <AppText variant="labelSm" tone="brand" align="center">
               Fotoğraf ekle
             </AppText>
           </Pressable>
@@ -213,7 +213,7 @@ export function SignUpPhotosScreen({ navigation }: Props) {
       {selectedIndex !== null ? (
         <View style={styles.swapNote} accessibilityLiveRegion="polite">
           <Check size={18} color={colors.brand} />
-          <AppText variant="caption12" tone="brand" style={styles.noteText}>
+          <AppText variant="caption" tone="brand" style={styles.noteText}>
             Fotoğraf seçildi. Yer değiştirmek istediğin diğer fotoğrafa dokun.
           </AppText>
         </View>
@@ -221,13 +221,13 @@ export function SignUpPhotosScreen({ navigation }: Props) {
 
       <View style={styles.safetyNote}>
         <ShieldCheck size={19} color={colors.success} />
-        <AppText variant="caption12" tone="secondary" style={styles.noteText}>
+        <AppText variant="caption" tone="secondary" style={styles.noteText}>
           İlk fotoğraf profilinin kapak görselidir. Fotoğrafa dokunarak büyüt;
           0,5 saniye basılı tutup başka bir fotoğrafa dokunarak yerini değiştir.
         </AppText>
       </View>
       {error ? (
-        <AppText variant="caption12" tone="danger" accessibilityRole="alert">
+        <AppText variant="caption" tone="danger" accessibilityRole="alert">
           {error}
         </AppText>
       ) : null}
@@ -259,8 +259,8 @@ export function SignUpPhotosScreen({ navigation }: Props) {
             onPress={event => event.stopPropagation()}
           >
             <View style={styles.sheetHandle} />
-            <AppText variant="heading20">Fotoğraf ekle</AppText>
-            <AppText variant="body14" tone="secondary">
+            <AppText variant="headingMd">Fotoğraf ekle</AppText>
+            <AppText variant="body" tone="secondary">
               Yeni bir fotoğraf çekebilir veya galerinden seçebilirsin.
             </AppText>
             <Pressable
@@ -275,8 +275,8 @@ export function SignUpPhotosScreen({ navigation }: Props) {
                 <Camera size={23} color={colors.brand} />
               </View>
               <View style={styles.optionCopy}>
-                <AppText variant="label15">Kamerayı aç</AppText>
-                <AppText variant="caption12" tone="secondary">
+                <AppText variant="label">Kamerayı aç</AppText>
+                <AppText variant="caption" tone="secondary">
                   Şimdi yeni bir fotoğraf çek
                 </AppText>
               </View>
@@ -293,8 +293,8 @@ export function SignUpPhotosScreen({ navigation }: Props) {
                 <Images size={23} color={colors.brand} />
               </View>
               <View style={styles.optionCopy}>
-                <AppText variant="label15">Galeriden yükle</AppText>
-                <AppText variant="caption12" tone="secondary">
+                <AppText variant="label">Galeriden yükle</AppText>
+                <AppText variant="caption" tone="secondary">
                   Cihazındaki fotoğraflardan seç
                 </AppText>
               </View>

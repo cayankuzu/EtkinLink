@@ -187,8 +187,8 @@ export function MatchingLikesScreen({ route }: Props) {
           <Heart size={22} color={colors.brand} fill={colors.brandSoft} />
         </View>
         <View style={styles.headerText}>
-          <AppText variant="heading22">Eşleşme</AppText>
-          <AppText variant="caption12" tone="secondary">
+          <AppText variant="headingLg">Eşleşme</AppText>
+          <AppText variant="caption" tone="secondary">
             Beğenilerini ve sana gelen ilgiyi yönet
           </AppText>
         </View>
@@ -309,12 +309,12 @@ export function MatchingLikesScreen({ route }: Props) {
         <Screen contentStyle={styles.detailScreen}>
           <View style={styles.detailHeader}>
             <View style={styles.detailHeading}>
-              <AppText variant="label15">
+              <AppText variant="label">
                 {selectedProfile?.source === 'incoming'
                   ? 'Gelen beğeniyi değerlendir'
                   : 'Profil detayları'}
               </AppText>
-              <AppText variant="tiny11" tone="secondary" numberOfLines={1}>
+              <AppText variant="caption" tone="secondary" numberOfLines={1}>
                 {selectedProfile?.item.eventTitle ?? 'Etkinlik'}
               </AppText>
             </View>
@@ -379,7 +379,7 @@ function SectionButton({
       style={[styles.tab, selected && styles.tabSelected]}
     >
       <AppText
-        variant="caption12"
+        variant="caption"
         tone={selected ? 'brand' : 'secondary'}
         align="center"
       >
@@ -432,7 +432,7 @@ function LikedProfileCard({
         {profile.compatibility ? (
           <View style={styles.scoreBadge}>
             <Sparkles size={12} color={colors.brand} />
-            <AppText variant="tiny11" tone="brand">
+            <AppText variant="caption" tone="brand">
               %{profile.compatibility.score}
             </AppText>
           </View>
@@ -452,28 +452,28 @@ function LikedProfileCard({
         ) : null}
       </View>
       <View style={styles.profileInfo}>
-        <AppText variant="label15" numberOfLines={1}>
+        <AppText variant="label" numberOfLines={1}>
           {profile.fullName}
           {profile.age !== null ? `, ${profile.age}` : ''}
         </AppText>
-        <AppText variant="caption12" tone="secondary" numberOfLines={1}>
+        <AppText variant="caption" tone="secondary" numberOfLines={1}>
           @{profile.username}
         </AppText>
         <View style={styles.profileMeta}>
           <UserRound size={13} color={colors.textSecondary} />
-          <AppText variant="tiny11" tone="secondary" numberOfLines={1}>
+          <AppText variant="caption" tone="secondary" numberOfLines={1}>
             {getGenderLabel(profile.gender)}
           </AppText>
         </View>
         <View style={styles.profileMeta}>
           <MapPin size={13} color={colors.textSecondary} />
-          <AppText variant="tiny11" tone="secondary" numberOfLines={1}>
+          <AppText variant="caption" tone="secondary" numberOfLines={1}>
             {profile.city || 'Konum gizli'}
           </AppText>
         </View>
         <View style={styles.eventMeta}>
           <CalendarDays size={12} color={colors.brand} />
-          <AppText variant="tiny11" tone="brand" numberOfLines={1}>
+          <AppText variant="caption" tone="brand" numberOfLines={1}>
             {item.eventTitle}
           </AppText>
         </View>

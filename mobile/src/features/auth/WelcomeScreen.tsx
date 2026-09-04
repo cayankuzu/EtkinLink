@@ -29,8 +29,8 @@ export function WelcomeScreen({ navigation }: Props) {
 
         <View style={styles.body}>
           <View style={styles.titleBlock}>
-            <AppText variant="heading22">EtkinLink'e Hoş Geldin</AppText>
-            <AppText variant="body14" tone="secondary">
+            <AppText variant="headingLg">EtkinLink'e Hoş Geldin</AppText>
+            <AppText variant="body" tone="secondary">
               Etkinlik etrafında güvenli sosyalleşme ve eşleşme platformuna adım
               at.
             </AppText>
@@ -93,8 +93,8 @@ function Highlight({
         <Icon size={20} color={colors.brand} />
       </View>
       <View style={styles.highlightText}>
-        <AppText variant="label15">{title}</AppText>
-        <AppText variant="caption12" tone="secondary">
+        <AppText variant="label">{title}</AppText>
+        <AppText variant="caption" tone="secondary">
           {description}
         </AppText>
       </View>

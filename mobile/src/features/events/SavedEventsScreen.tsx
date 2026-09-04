@@ -47,7 +47,7 @@ export function SavedEventsScreen({ navigation }: Props) {
     <Screen contentStyle={styles.screen}>
       <View style={styles.header}>
         <IconButton icon={ArrowLeft} label="Geri" onPress={navigation.goBack} />
-        <AppText variant="heading20">Kaydedilenler</AppText>
+        <AppText variant="headingMd">Kaydedilenler</AppText>
         <View style={styles.spacer} />
       </View>
       {saved.isLoading ? (

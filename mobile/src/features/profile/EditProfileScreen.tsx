@@ -128,10 +128,10 @@ export function EditProfileScreen({ navigation }: Props) {
           onPress={navigation.goBack}
           style={styles.headerButton}
         />
-        <AppText variant="heading20">Profili düzenle</AppText>
+        <AppText variant="headingMd">Profili düzenle</AppText>
         <View style={styles.spacer} />
       </View>
-      <AppText variant="caption12" tone="secondary">
+      <AppText variant="caption" tone="secondary">
         Fotoğraflar ve ilgi alanları profilinde görünür. E-posta adresin herkese
         kapalıdır.
       </AppText>
@@ -189,7 +189,7 @@ export function EditProfileScreen({ navigation }: Props) {
         hint="İstersen bu alanı boş bırakabilirsin."
       />
       <View style={styles.section}>
-        <AppText variant="label14">Cinsiyet</AppText>
+        <AppText variant="labelSm">Cinsiyet</AppText>
         <View style={styles.chips}>
           {genders.map(item => (
             <Chip
@@ -202,7 +202,7 @@ export function EditProfileScreen({ navigation }: Props) {
         </View>
       </View>
       {save.error ? (
-        <AppText variant="caption12" tone="danger" accessibilityRole="alert">
+        <AppText variant="caption" tone="danger" accessibilityRole="alert">
           {toAppError(save.error).message}
         </AppText>
       ) : null}

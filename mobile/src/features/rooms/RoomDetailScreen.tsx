@@ -450,10 +450,10 @@ export function RoomDetailScreen({ route, navigation }: Props) {
           }
           style={styles.eventHeading}
         >
-          <AppText variant="label15" numberOfLines={1}>
+          <AppText variant="label" numberOfLines={1}>
             {event.data.title}
           </AppText>
-          <AppText variant="caption12" tone="secondary">
+          <AppText variant="caption" tone="secondary">
             Etkinlik odası · {stateLabel}
           </AppText>
         </Pressable>
@@ -489,7 +489,7 @@ export function RoomDetailScreen({ route, navigation }: Props) {
         >
           <LockKeyhole size={18} color={colors.textInverse} />
           <AppText
-            variant="body14"
+            variant="body"
             tone="inverse"
             style={styles.frozenNoticeText}
           >
@@ -547,11 +547,7 @@ export function RoomDetailScreen({ route, navigation }: Props) {
         ) : (
           <View style={styles.lockedComposer}>
             <CalendarDays size={18} color={colors.textSecondary} />
-            <AppText
-              variant="body14"
-              tone="secondary"
-              style={styles.lockedText}
-            >
+            <AppText variant="body" tone="secondary" style={styles.lockedText}>
               {stateMessage}
             </AppText>
           </View>
@@ -579,7 +575,7 @@ export function RoomDetailScreen({ route, navigation }: Props) {
             accessibilityViewIsModal
           >
             <View style={styles.sheetHandle} />
-            <AppText variant="label15" tone="secondary">
+            <AppText variant="label" tone="secondary">
               Oda Seçenekleri
             </AppText>
             <View style={styles.sheetActions}>
@@ -672,7 +668,7 @@ function OptionRow({
         }
       />
       <AppText
-        variant="label15"
+        variant="label"
         tone={visuallyDisabled ? 'tertiary' : danger ? 'danger' : 'primary'}
         style={styles.optionLabel}
       >

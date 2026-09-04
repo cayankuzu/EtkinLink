@@ -21,7 +21,7 @@ export function ChatSettingsScreen({ navigation }: Props) {
     <Screen contentStyle={styles.screen}>
       <View style={styles.header}>
         <IconButton icon={ArrowLeft} label="Geri" onPress={navigation.goBack} />
-        <AppText variant="heading20">Sohbet gizliliği</AppText>
+        <AppText variant="headingMd">Sohbet gizliliği</AppText>
         <View style={styles.spacer} />
       </View>
 
@@ -30,8 +30,8 @@ export function ChatSettingsScreen({ navigation }: Props) {
           <Sparkles size={22} color={colors.brand} />
         </View>
         <View style={styles.noticeText}>
-          <AppText variant="label15">Premium kontroller yakında</AppText>
-          <AppText variant="caption12" tone="secondary">
+          <AppText variant="label">Premium kontroller yakında</AppText>
+          <AppText variant="caption" tone="secondary">
             Şimdilik tüm güvenli sohbet özellikleri açık ve değiştirilemez.
             Yakında Premium ile görünürlük tercihlerini
             kişiselleştirebileceksin.
@@ -66,7 +66,7 @@ export function ChatSettingsScreen({ navigation }: Props) {
 
       <View style={styles.lockedHint}>
         <LockKeyhole size={16} color={colors.textTertiary} />
-        <AppText variant="tiny11" tone="tertiary" style={styles.hintText}>
+        <AppText variant="caption" tone="tertiary" style={styles.hintText}>
           Bu seçenekler varsayılan olarak açık tutulur. Anahtarlar Premium
           kontroller kullanıma açıldığında etkinleşecek.
         </AppText>
@@ -92,8 +92,8 @@ function SettingRow({
         <Icon size={20} color={colors.brand} />
       </View>
       <View style={styles.rowText}>
-        <AppText variant="label15">{title}</AppText>
-        <AppText variant="caption12" tone="secondary">
+        <AppText variant="label">{title}</AppText>
+        <AppText variant="caption" tone="secondary">
           {description}
         </AppText>
       </View>

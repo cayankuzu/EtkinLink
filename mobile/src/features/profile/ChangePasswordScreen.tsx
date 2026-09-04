@@ -43,14 +43,14 @@ export function ChangePasswordScreen({ navigation }: Props) {
           onPress={navigation.goBack}
           style={styles.headerButton}
         />
-        <AppText variant="heading20">Şifre yenile</AppText>
+        <AppText variant="headingMd">Şifre yenile</AppText>
         <View style={styles.spacer} />
       </View>
       <View style={styles.card}>
         <View style={styles.icon}>
           <MailCheck size={26} color={colors.brand} />
         </View>
-        <AppText variant="heading20" align="center">
+        <AppText variant="headingMd" align="center">
           {sent ? 'Bağlantı gönderildi' : 'Güvenli şifre yenileme'}
         </AppText>
         <AppText tone="secondary" align="center">
@@ -59,7 +59,7 @@ export function ChangePasswordScreen({ navigation }: Props) {
             : 'Hesabındaki doğrulanmış e-posta adresine şifre yenileme bağlantısı gönderilecek.'}
         </AppText>
         {error ? (
-          <AppText variant="caption12" tone="danger">
+          <AppText variant="caption" tone="danger">
             {error}
           </AppText>
         ) : null}

@@ -54,7 +54,7 @@ export function ForgotPasswordScreen({ navigation }: Props) {
         )}
       />
       {message ? (
-        <AppText variant="caption12" tone="danger" accessibilityRole="alert">
+        <AppText variant="caption" tone="danger" accessibilityRole="alert">
           {message}
         </AppText>
       ) : null}

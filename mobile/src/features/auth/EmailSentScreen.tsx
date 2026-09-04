@@ -120,12 +120,12 @@ export function EmailSentScreen({ route, navigation }: Props) {
   return (
     <Screen contentStyle={styles.screen}>
       <View style={styles.header}>
-        <AppText variant="label15" tone="brand">
+        <AppText variant="label" tone="brand">
           EtkinLink
         </AppText>
         <View style={styles.secureBadge}>
           <ShieldCheck size={16} color={colors.success} />
-          <AppText variant="tiny11" tone="success">
+          <AppText variant="caption" tone="success">
             Güvenli doğrulama
           </AppText>
         </View>
@@ -135,10 +135,10 @@ export function EmailSentScreen({ route, navigation }: Props) {
         <View style={styles.icon}>
           <MailCheck size={42} color={colors.brand} />
         </View>
-        <AppText variant="heading24" align="center">
+        <AppText variant="headingXl" align="center">
           E-postanı doğrula
         </AppText>
-        <AppText variant="body14" tone="secondary" align="center">
+        <AppText variant="body" tone="secondary" align="center">
           {route.params.email} adresine gönderdiğimiz bağlantıya dokun. Ardından
           bu ekrana dönüp doğrulama durumunu kontrol et.
         </AppText>
@@ -147,21 +147,21 @@ export function EmailSentScreen({ route, navigation }: Props) {
       <View style={styles.steps}>
         <View style={styles.stepRow}>
           <View style={styles.stepNumber}>
-            <AppText variant="label14" tone="brand">
+            <AppText variant="labelSm" tone="brand">
               1
             </AppText>
           </View>
-          <AppText variant="body14" tone="secondary" style={styles.stepText}>
+          <AppText variant="body" tone="secondary" style={styles.stepText}>
             E-posta uygulamanı aç ve doğrulama bağlantısına dokun.
           </AppText>
         </View>
         <View style={styles.stepRow}>
           <View style={styles.stepNumber}>
-            <AppText variant="label14" tone="brand">
+            <AppText variant="labelSm" tone="brand">
               2
             </AppText>
           </View>
-          <AppText variant="body14" tone="secondary" style={styles.stepText}>
+          <AppText variant="body" tone="secondary" style={styles.stepText}>
             Uygulamaya dön ve aşağıdaki kontrol düğmesini kullan.
           </AppText>
         </View>
@@ -177,7 +177,7 @@ export function EmailSentScreen({ route, navigation }: Props) {
           accessibilityRole="alert"
           accessibilityLiveRegion="polite"
         >
-          <AppText variant="caption12" tone={feedback.tone} align="center">
+          <AppText variant="caption" tone={feedback.tone} align="center">
             {feedback.text}
           </AppText>
         </View>

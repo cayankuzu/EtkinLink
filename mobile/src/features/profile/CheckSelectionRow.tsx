@@ -35,11 +35,11 @@ export function CheckSelectionRow({
       ]}
     >
       <View style={styles.copy}>
-        <AppText variant="label14" tone={disabled ? 'secondary' : 'primary'}>
+        <AppText variant="labelSm" tone={disabled ? 'secondary' : 'primary'}>
           {label}
         </AppText>
         {description ? (
-          <AppText variant="caption12" tone="secondary">
+          <AppText variant="caption" tone="secondary">
             {description}
           </AppText>
         ) : null}

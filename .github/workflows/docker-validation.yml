@@ -50,12 +50,9 @@ jobs:
             /bin/hadolint --failure-threshold warning - \
             < infra/docker/Dockerfile.tooling \
             2>&1 | tee artifacts/docker/build/hadolint.txt
-      - name: Build tooling twice from clean cache and compare image IDs
+      - name: Build tooling twice from clean cache and compare the artifacts
         id: deterministic
         shell: bash
-        env:
-          IMAGE_A: etkinlink/docker-tooling:determinism-a-${{ github.sha }}
-          IMAGE_B: etkinlink/docker-tooling:determinism-b-${{ github.sha }}
         run: |
           set -euo pipefail
           BUILD_CONTEXT="$RUNNER_TEMP/etkinlink-build-context"
@@ -68,39 +65,28 @@ jobs:
           SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
           export SOURCE_DATE_EPOCH
 
-          docker buildx build \
-            --pull \
-            --no-cache \
-            --load \
-            --platform linux/amd64 \
-            --target tooling \
-            --provenance=false \
-            --file "$BUILD_CONTEXT/infra/docker/Dockerfile.tooling" \
-            --build-arg "SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}" \
-            --tag "$IMAGE_A" \
-            "$BUILD_CONTEXT" 2>&1 | tee artifacts/docker/build/build-a.txt
-          IMAGE_ID_A="$(docker image inspect "$IMAGE_A" --format '{{.Id}}')"
-
-          docker buildx build \
-            --pull \
-            --no-cache \
-            --load \
-            --platform linux/amd64 \
-            --target tooling \
-            --provenance=false \
-            --file "$BUILD_CONTEXT/infra/docker/Dockerfile.tooling" \
-            --build-arg "SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}" \
-            --tag "$IMAGE_B" \
-            "$BUILD_CONTEXT" 2>&1 | tee artifacts/docker/build/build-b.txt
-          IMAGE_ID_B="$(docker image inspect "$IMAGE_B" --format '{{.Id}}')"
-
-          printf '%s  first\n%s  second\n' "$IMAGE_ID_A" "$IMAGE_ID_B" \
-            | tee artifacts/docker/build/image-ids.txt
-          test "$IMAGE_ID_A" = "$IMAGE_ID_B"
+          # `rewrite-timestamp=true` is the part that makes this reproducible.
+          # SOURCE_DATE_EPOCH on its own only pins the config's `created` field
+          # and the history stamps; the file mtimes inside the layers still come
+          # from the wall clock, so `npm ci` gave every build different diffIDs
+          # and therefore a different image on every run.
+          for build in a b; do
+            docker buildx build \
+              --pull \
+              --no-cache \
+              --platform linux/amd64 \
+              --target tooling \
+              --provenance=false \
+              --file "$BUILD_CONTEXT/infra/docker/Dockerfile.tooling" \
+              --build-arg "SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}" \
+              --output "type=oci,rewrite-timestamp=true,dest=${RUNNER_TEMP}/tooling-${build}.oci.tar" \
+              "$BUILD_CONTEXT" 2>&1 | tee "artifacts/docker/build/build-${build}.txt"
+          done
           echo "source_date_epoch=$SOURCE_DATE_EPOCH" >> "$GITHUB_OUTPUT"
-          echo "image_id=$IMAGE_ID_A" >> "$GITHUB_OUTPUT"
       - name: Export provenance-bearing OCI archive
         shell: bash
+        env:
+          SOURCE_DATE_EPOCH: ${{ steps.deterministic.outputs.source_date_epoch }}
         run: |
           set -euo pipefail
           BUILD_CONTEXT="$RUNNER_TEMP/etkinlink-build-context"
@@ -113,36 +99,31 @@ jobs:
             --file "$BUILD_CONTEXT/infra/docker/Dockerfile.tooling" \
             --build-arg "SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}" \
             --provenance=mode=max \
-            --output type=oci,dest=artifacts/docker/supply-chain/tooling.oci.tar \
+            --output "type=oci,rewrite-timestamp=true,dest=artifacts/docker/supply-chain/tooling.oci.tar" \
             "$BUILD_CONTEXT" 2>&1 | tee artifacts/docker/supply-chain/oci-build.txt
-          tar -xOf artifacts/docker/supply-chain/tooling.oci.tar index.json \
-            > artifacts/docker/supply-chain/oci-index.json
-          node --input-type=module <<'NODE'
-          import { readFileSync, writeFileSync } from 'node:fs';
-          const index = JSON.parse(readFileSync('artifacts/docker/supply-chain/oci-index.json', 'utf8'));
-          const hasProvenance = index.manifests?.some(
-            manifest => manifest.annotations?.['vnd.docker.reference.type'] === 'attestation-manifest',
-          );
-          if (!hasProvenance) throw new Error('OCI archive has no provenance attestation manifest.');
-          const metadata = {
-            schemaVersion: 1,
-            targetSha: process.env.GITHUB_SHA,
-            workflowRunId: process.env.GITHUB_RUN_ID,
-            sourceDateEpoch: Number(process.env.SOURCE_DATE_EPOCH),
-            deterministicImageId: process.env.DETERMINISTIC_IMAGE_ID,
-            platform: 'linux/amd64',
-            provenance: 'mode=max',
-            syntheticDataOnly: true,
-            productionCredentialsUsed: false,
-          };
-          writeFileSync(
-            'artifacts/docker/supply-chain/provenance-metadata.json',
-            `${JSON.stringify(metadata, null, 2)}\n`,
-          );
-          NODE
+      - name: Assert the three builds produced one reproducible, attested image
+        shell: bash
         env:
           SOURCE_DATE_EPOCH: ${{ steps.deterministic.outputs.source_date_epoch }}
-          DETERMINISTIC_IMAGE_ID: ${{ steps.deterministic.outputs.image_id }}
+        run: |
+          set -euo pipefail
+          # Compares the image manifest digest, config digest, rootfs diffIDs and
+          # labels rather than the daemon's image ID, which only exists for an
+          # image that was loaded and absorbs whatever the loader normalises.
+          # Including the provenance archive proves the attestation covers this
+          # exact image rather than some other build of the same source.
+          node infra/docker/scripts/assert-reproducible-build.mjs \
+            --evidence artifacts/docker/build/reproducibility.json \
+            "${RUNNER_TEMP}/tooling-a.oci.tar" \
+            "${RUNNER_TEMP}/tooling-b.oci.tar" \
+            artifacts/docker/supply-chain/tooling.oci.tar \
+            | tee artifacts/docker/build/reproducibility.txt
+          node infra/docker/scripts/inspect-oci-archive.mjs \
+            artifacts/docker/supply-chain/tooling.oci.tar \
+            > artifacts/docker/supply-chain/oci-image.json
+          printf '{"schemaVersion":1,"targetSha":"%s","workflowRunId":"%s","sourceDateEpoch":%s,"platform":"linux/amd64","provenance":"mode=max","syntheticDataOnly":true,"productionCredentialsUsed":false}\n' \
+            "$GITHUB_SHA" "$GITHUB_RUN_ID" "$SOURCE_DATE_EPOCH" \
+            > artifacts/docker/supply-chain/provenance-metadata.json
       - name: Fail on HIGH or CRITICAL OCI vulnerabilities
         shell: bash
         run: |
@@ -174,14 +155,6 @@ jobs:
         if: always()
         shell: bash
         run: npm run docker:down
-      - name: Remove deterministic build images
-        if: always()
-        continue-on-error: true
-        shell: bash
-        run: |
-          docker image rm \
-            "etkinlink/docker-tooling:determinism-a-${GITHUB_SHA}" \
-            "etkinlink/docker-tooling:determinism-b-${GITHUB_SHA}"
       - name: Reject project-label orphans
         if: always()
         shell: bash

@@ -38,7 +38,7 @@ export function CityPickerScreen({ navigation }: Props) {
     <Screen contentStyle={styles.screen}>
       <View style={styles.header}>
         <IconButton icon={ArrowLeft} label="Geri" onPress={navigation.goBack} />
-        <AppText variant="heading20">Şehir Seç</AppText>
+        <AppText variant="headingMd">Şehir Seç</AppText>
         <View style={styles.spacer} />
       </View>
 
@@ -83,7 +83,7 @@ export function CityPickerScreen({ navigation }: Props) {
                 pressed && styles.pressed,
               ]}
             >
-              <AppText variant="label15">Tüm şehirler</AppText>
+              <AppText variant="label">Tüm şehirler</AppText>
               {city === null ? <Check size={20} color={colors.brand} /> : null}
             </Pressable>
           ) : null
@@ -106,9 +106,7 @@ export function CityPickerScreen({ navigation }: Props) {
               pressed && styles.pressed,
             ]}
           >
-            <AppText variant={city === item ? 'label15' : 'body15'}>
-              {item}
-            </AppText>
+            <AppText variant={city === item ? 'label' : 'body'}>{item}</AppText>
             {city === item ? <Check size={20} color={colors.brand} /> : null}
           </Pressable>
         )}
@@ -141,7 +139,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   input: {
-    ...typography.body15,
+    ...typography.body,
     flex: 1,
     minHeight: layout.touchTarget,
     color: colors.textPrimary,

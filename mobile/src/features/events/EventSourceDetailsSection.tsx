@@ -72,7 +72,7 @@ export function EventSourceDetailsSection({
   if (rows.length === 0) return null;
   return (
     <View style={styles.section}>
-      <AppText variant="heading18">Kaynak detayları</AppText>
+      <AppText variant="headingSm">Kaynak detayları</AppText>
       <View style={styles.infoCard}>
         {rows.map((row, index) => (
           <View key={row.label}>
@@ -104,10 +104,10 @@ export function EventInfoRow({
         <Icon size={19} color={colors.brand} />
       </View>
       <View style={styles.infoText}>
-        <AppText variant="tiny11" tone="secondary">
+        <AppText variant="caption" tone="secondary">
           {label}
         </AppText>
-        <AppText variant="label14">{value}</AppText>
+        <AppText variant="labelSm">{value}</AppText>
       </View>
     </View>
   );

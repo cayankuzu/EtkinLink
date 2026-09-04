@@ -42,11 +42,11 @@ export function RoomMessageBubble({ message, mine, onFailed }: Props) {
         ]}
       >
         {!mine ? (
-          <AppText variant="caption12" tone="brand">
+          <AppText variant="caption" tone="brand">
             {message.senderName}
           </AppText>
         ) : null}
-        <AppText variant="body14" tone={mine ? 'inverse' : 'primary'}>
+        <AppText variant="body" tone={mine ? 'inverse' : 'primary'}>
           {message.body}
         </AppText>
         <View style={styles.messageStatus}>
@@ -56,7 +56,7 @@ export function RoomMessageBubble({ message, mine, onFailed }: Props) {
               color={mine ? colors.textInverse : colors.danger}
             />
           ) : null}
-          <AppText variant="tiny11" tone={mine ? 'inverse' : 'tertiary'}>
+          <AppText variant="caption" tone={mine ? 'inverse' : 'tertiary'}>
             {message.status === 'sending'
               ? `Gönderiliyor · ${formatMessageDateTime(message.createdAt)}`
               : failed

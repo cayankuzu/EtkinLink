@@ -47,9 +47,9 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(
     return (
       <View style={styles.wrapper}>
         <View style={styles.labelRow}>
-          <AppText variant="label14">{label}</AppText>
+          <AppText variant="labelSm">{label}</AppText>
           {showCounter && maxLength ? (
-            <AppText variant="caption12" tone="tertiary">
+            <AppText variant="caption" tone="tertiary">
               {value?.length ?? 0}/{maxLength}
             </AppText>
           ) : null}
@@ -117,7 +117,7 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(
             accessibilityLiveRegion={error ? 'polite' : 'none'}
           >
             <AppText
-              variant="caption12"
+              variant="caption"
               tone={error ? 'danger' : 'tertiary'}
               style={styles.metaText}
             >
@@ -160,7 +160,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceMuted,
   },
   input: {
-    ...typography.body16,
+    ...typography.bodyLg,
     color: colors.textPrimary,
     minHeight: layout.inputHeight,
     paddingHorizontal: spacing.sm,

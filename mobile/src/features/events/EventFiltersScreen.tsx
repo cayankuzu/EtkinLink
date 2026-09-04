@@ -175,7 +175,7 @@ export function EventFiltersScreen({ navigation }: Props) {
     <Screen contentStyle={styles.screen}>
       <View style={styles.header}>
         <IconButton icon={ArrowLeft} label="Geri" onPress={navigation.goBack} />
-        <AppText variant="heading20">Filtreler</AppText>
+        <AppText variant="headingMd">Filtreler</AppText>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -184,7 +184,7 @@ export function EventFiltersScreen({ navigation }: Props) {
         contentContainerStyle={styles.content}
       >
         <View style={styles.group}>
-          <AppText variant="label15">Şehir</AppText>
+          <AppText variant="label">Şehir</AppText>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Etkinlik şehri seç"
@@ -199,8 +199,8 @@ export function EventFiltersScreen({ navigation }: Props) {
               <MapPin size={19} color={colors.brand} />
             </View>
             <View style={styles.selectorText}>
-              <AppText variant="label15">{city ?? 'Tüm şehirler'}</AppText>
-              <AppText variant="caption12" tone="secondary">
+              <AppText variant="label">{city ?? 'Tüm şehirler'}</AppText>
+              <AppText variant="caption" tone="secondary">
                 {city
                   ? 'Kayıt sırasında seçtiğin şehir varsayılandır.'
                   : 'Türkiye genelindeki etkinlikleri gösterir.'}
@@ -211,7 +211,7 @@ export function EventFiltersScreen({ navigation }: Props) {
         </View>
 
         <View style={styles.group}>
-          <AppText variant="label15">Tarih</AppText>
+          <AppText variant="label">Tarih</AppText>
           <View style={styles.chips}>
             {dateOptions.map(option => (
               <Chip
@@ -233,8 +233,8 @@ export function EventFiltersScreen({ navigation }: Props) {
                 <CalendarDays size={19} color={colors.brand} />
               </View>
               <View style={styles.selectorText}>
-                <AppText variant="label15">Tarih aralığı</AppText>
-                <AppText variant="caption12" tone="secondary">
+                <AppText variant="label">Tarih aralığı</AppText>
+                <AppText variant="caption" tone="secondary">
                   Başlangıç ve bitiş günlerini seç
                 </AppText>
               </View>
@@ -255,13 +255,10 @@ export function EventFiltersScreen({ navigation }: Props) {
                   pressed && styles.pressed,
                 ]}
               >
-                <AppText variant="tiny11" tone="secondary">
+                <AppText variant="caption" tone="secondary">
                   Başlangıç
                 </AppText>
-                <AppText
-                  variant="body14"
-                  tone={dateRange ? 'brand' : 'primary'}
-                >
+                <AppText variant="body" tone={dateRange ? 'brand' : 'primary'}>
                   {dateRange
                     ? format(dateRange.start, 'd MMM yyyy', { locale: tr })
                     : 'Tarih seç'}
@@ -282,13 +279,10 @@ export function EventFiltersScreen({ navigation }: Props) {
                   pressed && styles.pressed,
                 ]}
               >
-                <AppText variant="tiny11" tone="secondary">
+                <AppText variant="caption" tone="secondary">
                   Bitiş
                 </AppText>
-                <AppText
-                  variant="body14"
-                  tone={dateRange ? 'brand' : 'primary'}
-                >
+                <AppText variant="body" tone={dateRange ? 'brand' : 'primary'}>
                   {dateRange
                     ? format(dateRange.end, 'd MMM yyyy', { locale: tr })
                     : 'Tarih seç'}
@@ -321,7 +315,7 @@ export function EventFiltersScreen({ navigation }: Props) {
         </View>
 
         <View style={styles.group}>
-          <AppText variant="label15">Sıralama</AppText>
+          <AppText variant="label">Sıralama</AppText>
           <View style={styles.chips}>
             {sortOptions.map(option => (
               <Chip
@@ -336,8 +330,8 @@ export function EventFiltersScreen({ navigation }: Props) {
 
         <View style={styles.group}>
           <View style={styles.groupTitleRow}>
-            <AppText variant="label15">Kategoriler</AppText>
-            <AppText variant="caption12" tone="brand">
+            <AppText variant="label">Kategoriler</AppText>
+            <AppText variant="caption" tone="brand">
               {categories.length ? `${categories.length} seçili` : 'Tümü'}
             </AppText>
           </View>
@@ -378,7 +372,7 @@ export function EventFiltersScreen({ navigation }: Props) {
                 ]}
               >
                 <AppText
-                  variant={categories.length === 0 ? 'label15' : 'body15'}
+                  variant={categories.length === 0 ? 'label' : 'body'}
                   style={styles.categoryText}
                 >
                   Tümü
@@ -416,7 +410,7 @@ export function EventFiltersScreen({ navigation }: Props) {
                     ]}
                   >
                     <AppText
-                      variant={selected ? 'label15' : 'body15'}
+                      variant={selected ? 'label' : 'body'}
                       style={styles.categoryText}
                     >
                       {category}
@@ -436,7 +430,7 @@ export function EventFiltersScreen({ navigation }: Props) {
               })
             ) : (
               <View style={styles.emptyCategory}>
-                <AppText variant="body14" tone="secondary" align="center">
+                <AppText variant="body" tone="secondary" align="center">
                   Bu aramayla eşleşen kategori bulunamadı.
                 </AppText>
               </View>
@@ -544,7 +538,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   input: {
-    ...typography.body15,
+    ...typography.body,
     flex: 1,
     minHeight: layout.touchTarget,
     color: colors.textPrimary,

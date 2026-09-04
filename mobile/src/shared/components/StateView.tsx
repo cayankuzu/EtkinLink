@@ -27,7 +27,7 @@ export function StateView({
       <View style={styles.iconWrap}>
         <Icon size={24} color={colors.brand} />
       </View>
-      <AppText variant="heading18" align="center">
+      <AppText variant="headingSm" align="center">
         {title}
       </AppText>
       <AppText tone="secondary" align="center">

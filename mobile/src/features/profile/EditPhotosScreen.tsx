@@ -132,11 +132,11 @@ export function EditPhotosScreen({ navigation }: Props) {
     <Screen scroll contentStyle={styles.screen}>
       <View style={styles.header}>
         <IconButton icon={ArrowLeft} label="Geri" onPress={navigation.goBack} />
-        <AppText variant="heading20">Fotoğrafları düzenle</AppText>
+        <AppText variant="headingMd">Fotoğrafları düzenle</AppText>
         <View style={styles.spacer} />
       </View>
       <AppText
-        variant="caption12"
+        variant="caption"
         tone={photos.length >= 3 ? 'success' : 'secondary'}
       >
         {photos.length}/6 fotoğraf · En az 3 fotoğraf
@@ -156,7 +156,7 @@ export function EditPhotosScreen({ navigation }: Props) {
                   color={colors.textInverse}
                   fill={colors.textInverse}
                 />
-                <AppText variant="tiny11" tone="inverse">
+                <AppText variant="caption" tone="inverse">
                   Ana fotoğraf
                 </AppText>
               </View>
@@ -191,18 +191,18 @@ export function EditPhotosScreen({ navigation }: Props) {
             style={({ pressed }) => [styles.add, pressed && styles.pressed]}
           >
             <ImagePlus size={30} color={colors.brand} />
-            <AppText variant="label14" tone="brand">
+            <AppText variant="labelSm" tone="brand">
               Fotoğraf ekle
             </AppText>
           </Pressable>
         ) : null}
       </View>
-      <AppText variant="caption12" tone="secondary">
+      <AppText variant="caption" tone="secondary">
         İlk kare ana fotoğrafındır. Sıralamak için diğer fotoğraflardaki yıldız
         düğmesini kullan.
       </AppText>
       {error ? (
-        <AppText variant="caption12" tone="danger" accessibilityRole="alert">
+        <AppText variant="caption" tone="danger" accessibilityRole="alert">
           {error}
         </AppText>
       ) : null}

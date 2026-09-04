@@ -106,7 +106,7 @@ export function BlockedUsersScreen({ navigation }: Props) {
           onPress={navigation.goBack}
           style={styles.headerButton}
         />
-        <AppText variant="heading20">Engellenenler</AppText>
+        <AppText variant="headingMd">Engellenenler</AppText>
         <View style={styles.spacer} />
       </View>
       {blocked.data?.length ? (
@@ -129,8 +129,8 @@ export function BlockedUsersScreen({ navigation }: Props) {
                 <View style={styles.avatar} />
               )}
               <View style={styles.info}>
-                <AppText variant="label15">{item.name}</AppText>
-                <AppText variant="caption12" tone="secondary">
+                <AppText variant="label">{item.name}</AppText>
+                <AppText variant="caption" tone="secondary">
                   @{item.username}
                 </AppText>
               </View>

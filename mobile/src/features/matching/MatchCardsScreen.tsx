@@ -284,7 +284,7 @@ export function MatchCardsScreen({ route, navigation }: Props) {
       <View style={styles.header}>
         <IconButton icon={ArrowLeft} label="Geri" onPress={navigation.goBack} />
         <View style={styles.heading}>
-          <AppText variant="label15">Eşleşme</AppText>
+          <AppText variant="label">Eşleşme</AppText>
         </View>
         <View style={styles.headerActions}>
           <IconButton
@@ -323,7 +323,7 @@ export function MatchCardsScreen({ route, navigation }: Props) {
                 pointerEvents="none"
                 style={[styles.decision, styles.likeDecision, likeStyle]}
               >
-                <AppText variant="heading20" tone="success">
+                <AppText variant="headingMd" tone="success">
                   BEĞEN
                 </AppText>
               </Animated.View>
@@ -331,7 +331,7 @@ export function MatchCardsScreen({ route, navigation }: Props) {
                 pointerEvents="none"
                 style={[styles.decision, styles.passDecision, passStyle]}
               >
-                <AppText variant="heading20" tone="danger">
+                <AppText variant="headingMd" tone="danger">
                   GEÇ
                 </AppText>
               </Animated.View>
@@ -363,7 +363,7 @@ export function MatchCardsScreen({ route, navigation }: Props) {
       </View>
       {actionError ? (
         <AppText
-          variant="caption12"
+          variant="caption"
           tone="danger"
           accessibilityRole="alert"
           align="center"
@@ -410,11 +410,11 @@ export function MatchCardsScreen({ route, navigation }: Props) {
             <View style={styles.matchCopy}>
               <View style={styles.matchEyebrow}>
                 <Sparkles size={14} color={colors.brand} />
-                <AppText variant="tiny11" tone="brand">
+                <AppText variant="caption" tone="brand">
                   YENİ EŞLEŞME
                 </AppText>
               </View>
-              <AppText variant="heading24" align="center">
+              <AppText variant="headingXl" align="center">
                 Eşleştiniz!
               </AppText>
               <AppText tone="secondary" align="center">
@@ -426,7 +426,7 @@ export function MatchCardsScreen({ route, navigation }: Props) {
             <View style={styles.matchEvent}>
               <CalendarDays size={16} color={colors.brand} />
               <AppText
-                variant="caption12"
+                variant="caption"
                 tone="brand"
                 numberOfLines={1}
                 style={styles.matchEventTitle}

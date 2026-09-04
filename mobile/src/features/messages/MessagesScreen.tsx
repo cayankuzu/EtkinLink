@@ -105,8 +105,8 @@ export function MessagesScreen({ navigation }: Props) {
     >
       <View style={styles.header}>
         <View style={styles.headerText}>
-          <AppText variant="heading22">Mesajlar</AppText>
-          <AppText variant="caption12" tone="secondary">
+          <AppText variant="headingLg">Mesajlar</AppText>
+          <AppText variant="caption" tone="secondary">
             Etkinlik eşleşmelerinle özel sohbetler
           </AppText>
         </View>
@@ -214,7 +214,7 @@ function NewMatches({
 }) {
   return (
     <View style={styles.newSection}>
-      <AppText variant="label15">Yeni eşleşmeler</AppText>
+      <AppText variant="label">Yeni eşleşmeler</AppText>
       <FlashList
         horizontal
         data={items}
@@ -235,7 +235,7 @@ function NewMatches({
             ) : (
               <View style={styles.newAvatar} />
             )}
-            <AppText variant="caption12" numberOfLines={1}>
+            <AppText variant="caption" numberOfLines={1}>
               {item.otherUser.fullName.split(' ')[0]}
             </AppText>
           </Pressable>
@@ -289,26 +289,26 @@ function ConversationRow({
       <View style={styles.rowContent}>
         <View style={styles.rowTop}>
           <View style={styles.nameWrap}>
-            <AppText variant="label15" numberOfLines={1} style={styles.name}>
+            <AppText variant="label" numberOfLines={1} style={styles.name}>
               {match.otherUser.fullName}
             </AppText>
             {presence.otherOnline ? (
               <View style={styles.onlineLabel}>
                 <View style={styles.inlineOnlineDot} />
-                <AppText variant="tiny11" tone="success">
+                <AppText variant="caption" tone="success">
                   Çevrimiçi
                 </AppText>
               </View>
             ) : null}
           </View>
-          <AppText variant="tiny11" tone="tertiary">
+          <AppText variant="caption" tone="tertiary">
             {match.lastMessageAt
               ? formatMessagePreviewDateTime(match.lastMessageAt)
               : 'Yeni'}
           </AppText>
         </View>
         <AppText
-          variant="body14"
+          variant="body"
           tone={presence.otherTyping ? 'success' : 'secondary'}
           numberOfLines={1}
           style={presence.otherTyping ? styles.typingPreview : undefined}
@@ -318,7 +318,7 @@ function ConversationRow({
       </View>
       {match.unreadCount > 0 ? (
         <View style={styles.unread}>
-          <AppText variant="caption12" tone="inverse">
+          <AppText variant="caption" tone="inverse">
             {match.unreadCount > 99 ? '99+' : match.unreadCount}
           </AppText>
         </View>
@@ -351,7 +351,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     paddingHorizontal: spacing.sm,
   },
-  searchInput: { ...typography.body15, flex: 1, color: colors.textPrimary },
+  searchInput: { ...typography.body, flex: 1, color: colors.textPrimary },
   list: {
     paddingHorizontal: spacing.sm,
     paddingTop: spacing.sm,

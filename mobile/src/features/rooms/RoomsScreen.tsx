@@ -76,8 +76,8 @@ export function RoomsScreen({ navigation }: Props) {
     >
       <View style={styles.header}>
         <View style={styles.headerText}>
-          <AppText variant="heading22">Odalar</AppText>
-          <AppText variant="caption12" tone="secondary">
+          <AppText variant="headingLg">Odalar</AppText>
+          <AppText variant="caption" tone="secondary">
             Katıldığın etkinliklerin sohbet alanları
           </AppText>
         </View>
@@ -119,7 +119,7 @@ export function RoomsScreen({ navigation }: Props) {
           contentContainerStyle={styles.list}
           renderSectionHeader={({ section }) => (
             <AppText
-              variant="caption12"
+              variant="caption"
               tone="secondary"
               style={styles.sectionTitle}
             >

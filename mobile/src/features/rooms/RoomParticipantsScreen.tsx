@@ -59,9 +59,9 @@ export function RoomParticipantsScreen({ route, navigation }: Props) {
       <View style={styles.header}>
         <IconButton icon={ArrowLeft} label="Geri" onPress={navigation.goBack} />
         <View style={styles.titleRow}>
-          <AppText variant="heading18">Katılımcılar</AppText>
+          <AppText variant="headingSm">Katılımcılar</AppText>
           <View style={styles.countBadge}>
-            <AppText variant="caption12" tone="brand">
+            <AppText variant="caption" tone="brand">
               {participants.data?.length ?? 0} kişi
             </AppText>
           </View>
@@ -145,18 +145,18 @@ function ParticipantRow({ participant }: { participant: RoomParticipant }) {
       )}
       <View style={styles.rowText}>
         <View style={styles.nameRow}>
-          <AppText variant="label15" numberOfLines={1} style={styles.name}>
+          <AppText variant="label" numberOfLines={1} style={styles.name}>
             {participant.fullName}
           </AppText>
           {participant.city ? (
             <View style={styles.cityBadge}>
-              <AppText variant="caption12" tone="secondary" numberOfLines={1}>
+              <AppText variant="caption" tone="secondary" numberOfLines={1}>
                 {participant.city}
               </AppText>
             </View>
           ) : null}
         </View>
-        <AppText variant="body14" tone="secondary" numberOfLines={1}>
+        <AppText variant="body" tone="secondary" numberOfLines={1}>
           {participant.bio || `@${participant.username}`}
         </AppText>
       </View>
@@ -194,7 +194,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   searchInput: {
-    ...typography.body14,
+    ...typography.body,
     flex: 1,
     color: colors.textPrimary,
     paddingVertical: 0,

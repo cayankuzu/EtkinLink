@@ -89,16 +89,16 @@ export function RoomCard({
         )}
       </View>
       <View style={styles.info}>
-        <AppText variant="label15" numberOfLines={1}>
+        <AppText variant="label" numberOfLines={1}>
           {room.title}
         </AppText>
         <View style={styles.eventMeta}>
           <View style={[styles.badge, { backgroundColor: state.background }]}>
-            <AppText variant="caption12" tone={state.tone}>
+            <AppText variant="caption" tone={state.tone}>
               {state.label}
             </AppText>
           </View>
-          <AppText variant="caption12" tone="secondary" numberOfLines={1}>
+          <AppText variant="caption" tone="secondary" numberOfLines={1}>
             {formatEventDate(room.startAt)}
           </AppText>
         </View>
@@ -114,7 +114,7 @@ export function RoomCard({
               color={room.lastMessage ? colors.brand : colors.textTertiary}
             />
             <AppText
-              variant="tiny11"
+              variant="caption"
               tone={room.lastMessage ? 'brand' : 'tertiary'}
               numberOfLines={1}
               style={styles.previewDirection}
@@ -126,13 +126,13 @@ export function RoomCard({
                 : 'Mesaj önizlemesi'}
             </AppText>
             {room.lastMessageAt ? (
-              <AppText variant="tiny11" tone="tertiary">
+              <AppText variant="caption" tone="tertiary">
                 {formatMessagePreviewDateTime(room.lastMessageAt)}
               </AppText>
             ) : null}
           </View>
           <AppText
-            variant="caption12"
+            variant="caption"
             tone={room.lastMessage ? 'primary' : 'tertiary'}
             numberOfLines={1}
           >
@@ -142,7 +142,7 @@ export function RoomCard({
       </View>
       {room.unreadCount > 0 && room.state !== 'locked' ? (
         <View style={styles.unread}>
-          <AppText variant="caption12" tone="inverse">
+          <AppText variant="caption" tone="inverse">
             {room.unreadCount > 99 ? '99+' : room.unreadCount}
           </AppText>
         </View>

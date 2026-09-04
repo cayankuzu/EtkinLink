@@ -57,7 +57,7 @@ export function AboutLegalScreen({ navigation }: Props) {
           onPress={navigation.goBack}
           style={styles.headerButton}
         />
-        <AppText variant="heading20">Hakkında ve Yasal</AppText>
+        <AppText variant="headingMd">Hakkında ve Yasal</AppText>
         <View style={styles.spacer} />
       </View>
       <View style={styles.card}>
@@ -76,7 +76,7 @@ export function AboutLegalScreen({ navigation }: Props) {
               ]}
             >
               <Icon size={20} color={colors.textSecondary} />
-              <AppText variant="label15" style={styles.rowText}>
+              <AppText variant="label" style={styles.rowText}>
                 {item.title}
               </AppText>
               <ExternalLink size={19} color={colors.textSecondary} />

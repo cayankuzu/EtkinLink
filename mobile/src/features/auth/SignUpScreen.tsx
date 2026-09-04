@@ -59,7 +59,7 @@ export function SignUpScreen({ navigation }: Props) {
               pressed && styles.pressed,
             ]}
           >
-            <AppText variant="label15" tone="brand">
+            <AppText variant="label" tone="brand">
               Giriş yap
             </AppText>
           </Pressable>
@@ -68,11 +68,11 @@ export function SignUpScreen({ navigation }: Props) {
     >
       <View style={styles.progressHeader}>
         <View style={styles.stepBadge}>
-          <AppText variant="caption12" tone="brand">
+          <AppText variant="caption" tone="brand">
             HESAP BİLGİLERİ
           </AppText>
         </View>
-        <AppText variant="caption12" tone="secondary">
+        <AppText variant="caption" tone="secondary">
           %20 tamamlandı
         </AppText>
       </View>
@@ -146,7 +146,7 @@ export function SignUpScreen({ navigation }: Props) {
 
       <View style={styles.flowNote}>
         <Route size={18} color={colors.brand} />
-        <AppText variant="caption12" tone="secondary" style={styles.flowText}>
+        <AppText variant="caption" tone="secondary" style={styles.flowText}>
           Bu adım e-posta göndermez. Doğrulama bağlantısı tüm adımları
           tamamladıktan sonra gönderilir.
         </AppText>
@@ -187,12 +187,12 @@ function PasswordStrength({
   return (
     <View style={styles.strengthBox}>
       <View style={styles.strengthHeader}>
-        <AppText variant="caption12" tone="secondary">
+        <AppText variant="caption" tone="secondary">
           Şifre güvenliği
         </AppText>
         {password.length > 0 ? (
           <AppText
-            variant="caption12"
+            variant="caption"
             tone={score === 4 ? 'success' : score <= 1 ? 'danger' : 'brand'}
           >
             {label}
@@ -224,7 +224,7 @@ function PasswordStrength({
               ) : null}
             </View>
             <AppText
-              variant="tiny11"
+              variant="caption"
               tone={checks[index] ? 'secondary' : 'tertiary'}
             >
               {requirement}

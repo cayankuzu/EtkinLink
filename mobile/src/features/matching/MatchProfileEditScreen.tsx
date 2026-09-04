@@ -193,13 +193,13 @@ export function MatchProfileEditScreen({ navigation }: Props) {
     <Screen scroll contentStyle={styles.screen}>
       <View style={styles.header}>
         <IconButton icon={ArrowLeft} label="Geri" onPress={navigation.goBack} />
-        <AppText variant="heading18">Eşleşme Profili</AppText>
+        <AppText variant="headingSm">Eşleşme Profili</AppText>
       </View>
       <View style={styles.section}>
         <View style={styles.sectionHeading}>
-          <AppText variant="label13">Fotoğraflar (3–6)</AppText>
+          <AppText variant="overline">Fotoğraflar (3–6)</AppText>
           <AppText
-            variant="caption12"
+            variant="caption"
             tone={photos.length >= 3 ? 'success' : 'danger'}
           >
             {photos.length}/6
@@ -220,7 +220,7 @@ export function MatchProfileEditScreen({ navigation }: Props) {
                     color={colors.textInverse}
                     fill={colors.textInverse}
                   />
-                  <AppText variant="tiny11" tone="inverse">
+                  <AppText variant="caption" tone="inverse">
                     Kapak
                   </AppText>
                 </View>
@@ -253,7 +253,7 @@ export function MatchProfileEditScreen({ navigation }: Props) {
               style={styles.addPhoto}
             >
               <ImagePlus size={24} color={colors.brand} />
-              <AppText variant="caption12" tone="brand" align="center">
+              <AppText variant="caption" tone="brand" align="center">
                 Fotoğraf ekle
               </AppText>
             </Pressable>
@@ -269,7 +269,7 @@ export function MatchProfileEditScreen({ navigation }: Props) {
         maxLength={contentLimits.bio}
       />
       <View style={styles.section}>
-        <AppText variant="label13">İlgi Alanları</AppText>
+        <AppText variant="overline">İlgi Alanları</AppText>
         <View style={styles.chips}>
           {selectedInterests.map(item => (
             <Chip
@@ -286,14 +286,14 @@ export function MatchProfileEditScreen({ navigation }: Props) {
             style={styles.addInterest}
           >
             <ImagePlus size={14} color={colors.brand} />
-            <AppText variant="caption12" tone="brand">
+            <AppText variant="caption" tone="brand">
               İlgi alanı ekle
             </AppText>
           </Pressable>
         </View>
       </View>
       {error ? (
-        <AppText variant="caption12" tone="danger" accessibilityRole="alert">
+        <AppText variant="caption" tone="danger" accessibilityRole="alert">
           {error}
         </AppText>
       ) : null}
@@ -308,8 +308,8 @@ export function MatchProfileEditScreen({ navigation }: Props) {
           <View style={styles.interestSheet}>
             <View style={styles.sheetHeader}>
               <View>
-                <AppText variant="heading18">İlgi Alanları</AppText>
-                <AppText variant="caption12" tone="secondary">
+                <AppText variant="headingSm">İlgi Alanları</AppText>
+                <AppText variant="caption" tone="secondary">
                   {selected.length}/12 seçildi · En az 3
                 </AppText>
               </View>

@@ -131,15 +131,15 @@ export function AgeRangeSlider({
     <View style={[styles.wrapper, disabled ? styles.disabled : null]}>
       <View style={styles.valueRow}>
         <View style={styles.valuePill}>
-          <AppText variant="label14" tone="brand">
+          <AppText variant="labelSm" tone="brand">
             {valueMin} yaş
           </AppText>
         </View>
-        <AppText variant="caption12" tone="secondary">
+        <AppText variant="caption" tone="secondary">
           Seçili aralık
         </AppText>
         <View style={styles.valuePill}>
-          <AppText variant="label14" tone="brand">
+          <AppText variant="labelSm" tone="brand">
             {valueMax} yaş
           </AppText>
         </View>
@@ -207,10 +207,10 @@ export function AgeRangeSlider({
         </View>
       </Pressable>
       <View style={styles.limitRow}>
-        <AppText variant="tiny11" tone="tertiary">
+        <AppText variant="caption" tone="tertiary">
           {minimum}
         </AppText>
-        <AppText variant="tiny11" tone="tertiary">
+        <AppText variant="caption" tone="tertiary">
           {maximum}
         </AppText>
       </View>

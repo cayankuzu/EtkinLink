@@ -278,7 +278,7 @@ export function ProfilePhotoGallery({
               onPress={() => setFullscreenIndex(null)}
               style={styles.fullscreenButton}
             />
-            <AppText variant="label15" tone="inverse">
+            <AppText variant="label" tone="inverse">
               {fullscreenIndex === null
                 ? ''
                 : `${fullscreenIndex + 1} / ${photos.length}`}
@@ -335,7 +335,7 @@ export function ProfilePhotoGallery({
             {!ownProfile && onReport ? (
               <Flag size={16} color={colors.textInverse} />
             ) : null}
-            <AppText variant="caption12" tone="inverse">
+            <AppText variant="caption" tone="inverse">
               {ownProfile
                 ? 'İndirmek için sağ üstteki menüyü kullan'
                 : 'Şikayet için sağ üstteki menüyü kullan'}

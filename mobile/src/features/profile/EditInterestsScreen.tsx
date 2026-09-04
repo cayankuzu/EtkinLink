@@ -60,11 +60,11 @@ export function EditInterestsScreen({ navigation }: Props) {
     <Screen scroll contentStyle={styles.screen}>
       <View style={styles.header}>
         <IconButton icon={ArrowLeft} label="Geri" onPress={navigation.goBack} />
-        <AppText variant="heading20">İlgi alanlarını düzenle</AppText>
+        <AppText variant="headingMd">İlgi alanlarını düzenle</AppText>
         <View style={styles.spacer} />
       </View>
       <AppText
-        variant="caption12"
+        variant="caption"
         tone={selected.length >= 3 ? 'success' : 'secondary'}
       >
         {selected.length}/12 seçildi · En az 3 seçim
@@ -98,7 +98,7 @@ export function EditInterestsScreen({ navigation }: Props) {
         </View>
       )}
       {save.error ? (
-        <AppText variant="caption12" tone="danger">
+        <AppText variant="caption" tone="danger">
           {toAppError(save.error).message}
         </AppText>
       ) : null}

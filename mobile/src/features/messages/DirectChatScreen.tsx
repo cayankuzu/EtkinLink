@@ -503,13 +503,13 @@ export function DirectChatScreen({ route, navigation }: Props) {
             ) : null}
           </View>
           <View style={styles.headerName}>
-            <AppText variant="label15" numberOfLines={1}>
+            <AppText variant="label" numberOfLines={1}>
               {match.data.otherUser.fullName}
             </AppText>
             <View style={styles.presenceStatus}>
               {livePeerStatus ? <View style={styles.inlineStatusDot} /> : null}
               <AppText
-                variant="tiny11"
+                variant="caption"
                 tone={livePeerStatus ? 'success' : 'secondary'}
                 numberOfLines={1}
               >
@@ -527,7 +527,7 @@ export function DirectChatScreen({ route, navigation }: Props) {
               }}
               style={styles.eventPill}
             >
-              <AppText variant="tiny11" tone="brand" numberOfLines={1}>
+              <AppText variant="caption" tone="brand" numberOfLines={1}>
                 {match.data.eventTitle} etkinliğinde eşleştiniz
               </AppText>
             </Pressable>
@@ -588,7 +588,7 @@ export function DirectChatScreen({ route, navigation }: Props) {
           />
         ) : (
           <View style={styles.locked}>
-            <AppText variant="body14" tone="secondary" align="center">
+            <AppText variant="body" tone="secondary" align="center">
               {match.data.status === 'blocked'
                 ? 'Bu sohbet engelleme nedeniyle kilitli. Geçmiş mesajları okuyabilirsin.'
                 : 'Bu eşleşme sona erdi. Geçmiş mesajları okuyabilirsin.'}
@@ -609,7 +609,7 @@ export function DirectChatScreen({ route, navigation }: Props) {
           onPress={() => setMenuVisible(false)}
         >
           <View style={styles.sheet} accessibilityViewIsModal>
-            <AppText variant="heading20">Sohbet seçenekleri</AppText>
+            <AppText variant="headingMd">Sohbet seçenekleri</AppText>
             <AppButton
               label="Sohbet gizlilik ayarları"
               variant="secondary"
@@ -664,7 +664,7 @@ export function DirectChatScreen({ route, navigation }: Props) {
       >
         <View style={styles.backdrop}>
           <View style={styles.reportSheet} accessibilityViewIsModal>
-            <AppText variant="heading20">Kullanıcıyı şikâyet et</AppText>
+            <AppText variant="headingMd">Kullanıcıyı şikâyet et</AppText>
             <View style={styles.reasonChips}>
               {reportReasons.map(reason => (
                 <Chip
