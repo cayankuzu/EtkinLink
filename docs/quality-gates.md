@@ -62,7 +62,7 @@ Aynı yerel ağaçta (`chore/aaa-mvp-hardening-docker-cloudflare-ota-push`) çal
 | Docker resilience profili          | `npm run docker:resilience`        | Geçti (Toxiproxy timeout/latency, duplicate-free replay)                                                                     |
 | Docker bounded yük profili         | `npm run docker:load`              | Geçti: 98.524 kontrol, %100 başarı, p(95) 1,32 ms, p(99) 75,79 ms                                                            |
 
-`docker:test` profili `0ca5dc07d177e436fa72044bc01bbb78fea7093a` üzerinde temiz ağaçla çalıştırıldı ve `gitTreeClean=true`, `sameShaEligible=true` kaydetti.
+`docker:test` profili son olarak `e3672646b95b26701b8b25b3af68d39a8e0178d4` üzerinde temiz ağaçla çalıştırıldı ve `gitTreeClean=true`, `sameShaEligible=true` kaydetti. Bu commit'ten sonraki tek değişiklik bu belgenin kendisidir.
 
 > Bu tablo yerel Docker ve yerel toolchain kanıtıdır. Yük profili sentetik mock sözleşmesidir; staging kapasitesi, hosted provider veya production SLO kanıtı **değildir**. Android derlemesi debug imzalıdır. Aynı-SHA release kanıtı yalnız temiz ağaçta üretilen `docker-validation.yml` ve `mobile-ci.yml` artifact'larıyla bağlanır.
 
