@@ -12,6 +12,7 @@ import {
   run,
   supabase,
   stateRoot,
+  summarizeSupabaseStart,
   writeEvidence,
   writeLog,
 } from "./_common.mjs";
@@ -62,9 +63,11 @@ try {
   });
   await prepareSupabaseWorkdir();
 
-  const start = supabase(["start"]);
+  // `supabase start` echoes the local stack's credentials. Keep them out of the
+  // console and out of the artifact: run quiet, then write only the summary.
+  const start = supabase(["start"], { quiet: true });
   supabaseStarted = true;
-  await writeLog("test", "supabase-start.txt", start.output);
+  await writeLog("test", "supabase-start.txt", summarizeSupabaseStart(start.output));
   const health = run(
     "node",
     ["infra/docker/scripts/wait-for-health.mjs", "http://127.0.0.1:55321/auth/v1/health", "180000"],

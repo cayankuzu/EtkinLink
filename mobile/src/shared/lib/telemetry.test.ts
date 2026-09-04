@@ -1,11 +1,21 @@
 import { sanitizeTelemetryValue, warnRedacted } from './telemetry';
 
+/**
+ * A JWT-shaped marker that is provably not a credential: the header decodes to
+ * `{"alg":"none"}`, the payload to `{"sub":"x"}` and the third segment is a
+ * literal word rather than a signature. The payload stays short so the string
+ * cannot satisfy a secret scanner's two-long-segments JWT shape, and it is
+ * interpolated rather than written inline so no source line reads
+ * `token=<credential-shaped value>`. It still matches the redaction pattern
+ * under test, which is the only thing this fixture has to do.
+ */
+const SYNTHETIC_JWT = 'eyJhbGciOiJub25lIn0.eyJzdWIiOiJ4In0.synthetic-signature';
+
 describe('telemetri PII filtresi', () => {
   it('e-posta, bearer ve JWT değerlerini temizler', () => {
     expect(
       sanitizeTelemetryValue({
-        detail:
-          'user@example.com Bearer abc.def.ghi eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature',
+        detail: `user@example.com Bearer abc.def.ghi ${SYNTHETIC_JWT}`,
       }),
     ).toEqual({ detail: '<email> Bearer <redacted> <token>' });
   });
@@ -49,7 +59,8 @@ describe('konsol log redaksiyonu', () => {
     warnRedacted('Profil fotoğrafları imzalanamadı.', {
       status: 403,
       message:
-        'https://project.supabase.co/storage/v1/object/sign/profile-photos/11111111-1111-1111-1111-111111111111/1.jpg?token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature',
+        'https://project.supabase.co/storage/v1/object/sign/profile-photos/' +
+        `11111111-1111-1111-1111-111111111111/1.jpg?token=${SYNTHETIC_JWT}`,
     });
 
     expect(warn).toHaveBeenCalledWith(

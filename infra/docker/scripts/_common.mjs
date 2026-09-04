@@ -38,6 +38,60 @@ export function sanitizeOutput(value) {
     .replace(/(authorization\s*:\s*bearer\s+)\S+/giu, "$1[REDACTED]");
 }
 
+/**
+ * Progress lines from `supabase start` that carry evidence value: they prove the
+ * schema was initialised, every migration replayed and the seed ran. Nothing in
+ * this shape can hold a credential.
+ */
+const supabaseProgressPattern =
+  /^(?:Applying migration|Applied migration|Seeding|Setting up|Starting|Started|Stopping|Restarting|Initialising|Initializing|Creating|Pulling|Downloading|Skipping|Waiting|Using|No changes|Local database|Recreating|Removing)\b/u;
+
+/**
+ * `supabase start` prints the local stack's live credentials: the publishable
+ * and secret keys, the service-role JWT, the database password and the S3
+ * protocol secrets. Handing that whole payload to `sanitizeOutput` and writing
+ * the result leaves the artifact one CLI formatting change away from publishing
+ * a credential, because the regexes have to recognise every shape the CLI might
+ * choose. This summariser inverts that: it keeps only the progress lines that
+ * are evidence, reduces the status payload to the *names* of the fields it
+ * carried, and accounts for everything it dropped instead of forwarding it. An
+ * unrecognised line is dropped, so a CLI output change loses detail rather than
+ * leaking. Callers still pass the result through `sanitizeOutput`.
+ */
+export function summarizeSupabaseStart(output) {
+  const kept = [];
+  let droppedLines = 0;
+  for (const line of String(output ?? "").split(/\r?\n/u)) {
+    const trimmed = line.trim();
+    if (trimmed === "") continue;
+    if (supabaseProgressPattern.test(trimmed)) {
+      kept.push(trimmed);
+      continue;
+    }
+    if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+      let parsed;
+      try {
+        parsed = JSON.parse(trimmed);
+      } catch {
+        parsed = undefined;
+      }
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        kept.push(
+          `stack status fields (values withheld): ${
+            Object.keys(parsed).sort().join(", ")
+          }`,
+        );
+        continue;
+      }
+    }
+    droppedLines += 1;
+  }
+  kept.push(
+    `summary: ${kept.length} evidence lines kept, ${droppedLines} unrecognised lines withheld`,
+  );
+  return `${kept.join("\n")}\n`;
+}
+
 export function unsafeEvidenceLabels(value) {
   const source = String(value ?? "");
   const patterns = new Map([

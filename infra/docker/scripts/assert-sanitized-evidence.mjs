@@ -38,11 +38,11 @@ if (inputs.length === 0) {
   throw new Error("Usage: assert-sanitized-evidence.mjs <directory> [...]");
 }
 
-const allowedRoot = path.resolve(repositoryRoot, "artifacts", "docker");
+const allowedRoot = path.resolve(repositoryRoot, "artifacts");
 for (const input of inputs) {
   const root = path.resolve(repositoryRoot, input);
   if (root !== allowedRoot && !root.startsWith(allowedRoot + path.sep)) {
-    throw new Error("Evidence scan path is outside artifacts/docker: " + root);
+    throw new Error("Evidence scan path is outside artifacts/: " + root);
   }
   for (const file of await filesRecursively(root)) {
     if (!TEXT_EXTENSIONS.has(path.extname(file).toLowerCase())) continue;

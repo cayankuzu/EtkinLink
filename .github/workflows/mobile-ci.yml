@@ -84,8 +84,15 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifacts/database-security
-          supabase db start \
-            2>&1 | tee artifacts/database-security/db-start.txt
+          # The CLI echoes the local stack's credentials. Keep the raw log in the
+          # runner's temp directory and upload only the evidence-safe summary,
+          # for a failed start as much as a successful one.
+          status=0
+          supabase db start > "${RUNNER_TEMP}/db-start-raw.txt" 2>&1 || status=$?
+          node infra/docker/scripts/summarize-supabase-log.mjs \
+            "${RUNNER_TEMP}/db-start-raw.txt" \
+            | tee artifacts/database-security/db-start.txt
+          exit "${status}"
       - name: Yerel sema guvenligini dogrula
         shell: bash
         run: |
@@ -98,6 +105,9 @@ jobs:
         if: always()
         continue-on-error: true
         run: supabase stop --no-backup
+      - name: Kanit dosyalarinda sir taramasi
+        if: always()
+        run: node infra/docker/scripts/assert-sanitized-evidence.mjs artifacts/database-security
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
