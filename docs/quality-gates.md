@@ -38,23 +38,33 @@
 - Compose profil doğrulaması, container contract paketi, Toxiproxy resilience ve `10 VU / 10 saniye` bounded sentetik k6 koşusu yerelde geçti. Sentetik yük sonucu staging kapasitesi veya production SLO kanıtı değildir.
 - Canonical Supabase `docker:test` profilinin tamamlanmış aynı-SHA artifact'ı ve GitHub `docker-validation.yml` sonucu bu kayıt yazılırken bağlı değildir; bunlar eksikken migration/lint/pgTAP ya da supply-chain işleri için PASS iddiası kurulmaz.
 
-## 2026-09-03 güncel yerel sonuç
+## 2026-09-04 güncel yerel sonuç
 
 Aynı yerel ağaçta (`chore/aaa-mvp-hardening-docker-cloudflare-ota-push`) çalıştırılan kapılar:
 
-| Kapı                                     | Komut                             | Sonuç                                                      |
-| ---------------------------------------- | --------------------------------- | ---------------------------------------------------------- |
-| Ürün yüzeyi dondurma                     | `npm run feature-freeze`          | Geçti: 5 tab, 43 stack route, 39 ekran, 26 public tablo    |
-| Release evidence testleri                | `npm run release:evidence:test`   | 29/29 geçti                                                 |
-| Compose sözleşmesi                       | `npm run docker:config`           | Geçti                                                       |
-| Mobil zincir                             | `npm --prefix mobile run verify`  | Geçti; Jest **49 suite / 320 test**                        |
-| Erişilebilirlik guardı + self-test       | `accessibility:guards(:test)`     | 74 ekran dosyası temiz; 8/8 self-test                      |
-| Tasarım tokenı guardı + self-test        | `tokens:guards(:test)`            | 143 kaynak dosyası ham renksiz; 7/7 self-test              |
-| Cloudflare Worker                        | `npm run check` (edge)            | typecheck/lint/format temiz; vitest **32/32**              |
-| Edge Function kapısı                     | `deno fmt/lint/check/test`        | 21 dosya format, 12 dosya lint, 6 giriş type-check, 68/68  |
-| Canonical Supabase Docker profili        | `npm run docker:test`             | Geçti: **57 migration** replay, `public` lint 0 bulgu, **7 dosya / 283 pgTAP**, dump/restore, Edge/Worker/upstream contract |
+| Kapı                               | Komut                              | Sonuç                                                                                                                      |
+| ---------------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Ürün yüzeyi dondurma               | `npm run feature-freeze`           | Geçti: 5 tab, 43 stack route, 39 ekran, 26 public tablo                                                                     |
+| Release evidence testleri          | `npm run release:evidence:test`    | 29/29 geçti                                                                                                                  |
+| Compose sözleşmesi + mock birimi   | `npm run docker:config`            | 9/9 geçti                                                                                                                    |
+| Mobil zincir                       | `npm --prefix mobile run verify`   | Geçti; Jest **50 suite / 330 test**                                                                                          |
+| Erişilebilirlik guardı + self-test | `accessibility:guards(:test)`      | 74 ekran dosyası temiz; 8/8 self-test                                                                                        |
+| Hardcode guardı + self-test        | `hardcode:guards(:test)`           | 143 kaynak dosyası ham renk/sayfa boyutu içermiyor; 11/11 self-test                                                          |
+| Coverage ratchet                   | `npm run coverage:ratchet`         | PASS; global statement `%45,53`, branch `%36,74`, function `%34,22`, line `%46,92`; changed-critical statement `%93,42`     |
+| Production dependency audit        | `npm run audit:production`         | Geçti; `npm audit --omit=dev` 0 high/critical, 9 moderate ([risk-register.md](risk-register.md) D-01–D-03)                  |
+| Expo Doctor                        | `npx expo-doctor`                  | **20/20**                                                                                                                    |
+| Statik release ön kapıları         | `npm run release:check`            | Geçti                                                                                                                        |
+| OTA sınıflandırıcı                 | `node scripts/classify-update.mjs` | Bağımlılık yükseltmesi `NATIVE_BUILD_REQUIRED`; `--assert-ota-safe` exit 2 (fail-closed)                                     |
+| Android native derleme             | `./gradlew :app:assembleDebug`     | BUILD SUCCESSFUL, 13m 2s, 99.677.221 bayt debug APK (production imza kanıtı **değildir**)                                    |
+| Cloudflare Worker                  | `npm run check` (edge)             | typecheck/lint/format temiz; vitest **32/32**; üç ortam `dry-run` derlendi                                                   |
+| Edge Function kapısı               | `deno fmt/lint/check/test`         | 21 dosya format, 12 dosya lint, 6 giriş type-check, **68/68**                                                                |
+| Canonical Supabase Docker profili  | `npm run docker:test`              | Geçti: **57 migration** replay, `public` lint 0 bulgu, **7 dosya / 283 pgTAP**, dump/restore, Edge/Worker/upstream contract   |
+| Docker resilience profili          | `npm run docker:resilience`        | Geçti (Toxiproxy timeout/latency, duplicate-free replay)                                                                     |
+| Docker bounded yük profili         | `npm run docker:load`              | Geçti: 98.524 kontrol, %100 başarı, p(95) 1,32 ms, p(99) 75,79 ms                                                            |
 
-> Bu koşu yerel Docker ve yerel toolchain kanıtıdır. `gitTreeClean` alanı `false` olduğu için aynı-SHA release kanıtı sayılmaz; aynı-SHA kanıt yalnız temiz ağaçta üretilen `docker-validation.yml` ve `mobile-ci.yml` artifact'larıyla bağlanır.
+`docker:test` profili `0ca5dc07d177e436fa72044bc01bbb78fea7093a` üzerinde temiz ağaçla çalıştırıldı ve `gitTreeClean=true`, `sameShaEligible=true` kaydetti.
+
+> Bu tablo yerel Docker ve yerel toolchain kanıtıdır. Yük profili sentetik mock sözleşmesidir; staging kapasitesi, hosted provider veya production SLO kanıtı **değildir**. Android derlemesi debug imzalıdır. Aynı-SHA release kanıtı yalnız temiz ağaçta üretilen `docker-validation.yml` ve `mobile-ci.yml` artifact'larıyla bağlanır.
 
 ## Dış kanıt bekleyen kapılar
 

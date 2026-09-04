@@ -4,7 +4,7 @@ Bu belge, dış denetim bulgularının bu çalışma ağacındaki **doğrulanmı
 
 Durum etiketleri: `CONFIRMED`, `FIXED SINCE AUDIT`, `REGRESSED`, `NOT REPRODUCIBLE`, `RUNTIME/PROVIDER EVIDENCE REQUIRED`.
 
-Doğrulama commit'i: `git rev-parse HEAD` — komut çıktıları [quality-gates.md](../quality-gates.md) içindeki `2026-09-03 güncel yerel sonuç` tablosundadır.
+Komut çıktıları [quality-gates.md](../quality-gates.md) içindeki `2026-09-04 güncel yerel sonuç` tablosundadır.
 
 ## Denetim bulguları
 
@@ -38,12 +38,15 @@ Aşağıdakiler denetim listesinde yoktu; bu turda repository denetimiyle bulund
 | Thread sayfa boyutu aynı anda üç yerde tanımlıydı; roster sınırı adsızdı | P2 — DRY | Kaynak taraması | `FIXED` — `paginationLimits` + guard kuralı |
 | `mobile-ci.yml` Supabase CLI 2.115.0, Docker profili 2.116.0 pinliyordu | P2 — tekrar üretilebilirlik | Toolchain karşılaştırması | `FIXED` — hizalandı + eşleşme guard'ı |
 | `docs/quality-gates.md` ve `docs/production-readiness.md` 55 migration / 5 pgTAP / 251 plan sayılarını taşıyordu | P3 — belge doğruluğu | Sayım | `FIXED` — 57 / 7 / 283 |
+| `npm run docker:load` `checks: rate==1` eşiğini geçemiyordu: mock idempotency mağazası sınıra ulaşınca `clear()` ile tüm anahtarları unutuyor, replay ilk teslim gibi cevaplanıyordu | P2 — kapı güvenilirliği (fixture kusuru, production idempotency kusuru değil) | Yük profili koşusu | `FIXED` — en eskiyi tahliye eden bounded store + 6 birim testi; profil 98.524 kontrolde %100 geçti |
+| Expo Doctor 19/20: sekiz Expo paketi SDK 57 beklentisinin bir patch gerisindeydi (`expo-updates` 57.0.19 ↔ 57.0.21 dâhil) | P2 — bağımlılık/platform uyumu | `npx expo-doctor` | `FIXED` — SDK 57 içinde kontrollü patch yükseltmesi; Android debug derlemesiyle native olarak doğrulandı; Doctor 20/20 |
+| `decode-uri-component` (GHSA-vcc3-ghjq-m6fr) paketlenen tek advisory; upstream düzeltme yok ve `etkinlink://` deep link'i her uygulamadan açılabilir | P2 — güvenlik (DoS, veri ifşası yok) | `npm audit --omit=dev` bağımlılık yolu analizi | `MITIGATED` — `sanitizeDeepLinkPath` query/fragment düşürür, bozuk yüzde dizilerini reddeder, yolu 512 karaktere sınırlar; 10 birim testi; kalan risk [risk-register.md](../risk-register.md) D-01'de süreli kabul edilmiştir |
 
 ## Açık kalan kapılar
 
 Aşağıdakiler yalnız sağlayıcı erişimi, imzalı artifact veya fiziksel cihazla kapatılabilir; hiçbiri bu ağaçta PASS sayılmaz:
 
-- aynı-SHA `mobile-ci.yml` ve `docker-validation.yml` artifact'ları (yerel ağaç `gitTreeClean=false` iken üretilen kanıt aynı-SHA sayılmaz);
+- aynı-SHA `mobile-ci.yml` ve `docker-validation.yml` artifact'ları (yerel `docker:test` profili `0ca5dc07` üzerinde `sameShaEligible=true` kaydetti, fakat GitHub artifact'ı ayrıca gerekir);
 - gerçek Cloudflare hesabı/zone, preview Worker, %5→%25→%50→%100 rollout ve rollback;
 - gerçek EAS preview/production OTA yayını, runtime eşleşme/uyuşmazlık ve rollback provası;
 - imzalı AAB/IPA üzerinden effective OTA `enabled`/channel doğrulaması;
