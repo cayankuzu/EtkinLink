@@ -1,4 +1,4 @@
-import { colors, layout, radius, spacing } from '@shared/theme';
+import { colors, layout, radius, spacing, touchSlopFor } from '@shared/theme';
 import type { PressableProps } from 'react-native';
 import { Pressable, StyleSheet } from 'react-native';
 
@@ -21,6 +21,7 @@ export function Chip({
       accessibilityLabel={label}
       accessibilityState={{ selected, disabled: Boolean(disabled) }}
       disabled={disabled}
+      hitSlop={touchSlopFor(styles.base.minHeight)}
       style={({ pressed }) => [
         styles.base,
         selected && styles.selected,

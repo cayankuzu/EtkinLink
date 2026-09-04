@@ -1,5 +1,5 @@
 import { AppImage, AppText } from '@shared/components';
-import { colors, radius, shadows, spacing } from '@shared/theme';
+import { colors, radius, shadows, spacing, touchSlopFor } from '@shared/theme';
 import type { Event } from '@shared/types/domain';
 import { Bookmark, MapPin, UsersRound } from 'lucide-react-native';
 import { Pressable, StyleSheet, View } from 'react-native';
@@ -133,7 +133,7 @@ function SaveButton({
         event.saved ? 'Kaydedilenlerden çıkar' : 'Etkinliği kaydet'
       }
       accessibilityState={{ selected: event.saved }}
-      hitSlop={4}
+      hitSlop={touchSlopFor(styles.saveButton.height)}
       onPress={pressEvent => {
         pressEvent.stopPropagation();
         onToggleSaved();

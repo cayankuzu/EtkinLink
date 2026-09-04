@@ -25,7 +25,7 @@ import { toAppError } from '@shared/lib/errors';
 import { createClientId } from '@shared/lib/ids';
 import { queryKeys } from '@shared/lib/queryKeys';
 import { supabase } from '@shared/lib/supabase';
-import { colors, radius, spacing } from '@shared/theme';
+import { colors, radius, spacing, touchSlopFor } from '@shared/theme';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ImagePlus, Star, Trash2, X } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
@@ -283,6 +283,7 @@ export function MatchProfileEditScreen({ navigation }: Props) {
             accessibilityRole="button"
             accessibilityLabel="İlgi alanı ekle"
             onPress={() => setInterestsVisible(true)}
+            hitSlop={touchSlopFor(styles.addInterest.height)}
             style={styles.addInterest}
           >
             <ImagePlus size={14} color={colors.brand} />

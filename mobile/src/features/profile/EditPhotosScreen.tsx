@@ -12,7 +12,7 @@ import {
 import { toAppError } from '@shared/lib/errors';
 import { createClientId } from '@shared/lib/ids';
 import { queryKeys } from '@shared/lib/queryKeys';
-import { colors, radius, spacing } from '@shared/theme';
+import { colors, radius, spacing, touchSlopFor } from '@shared/theme';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ImagePlus, Star, Trash2 } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
@@ -165,6 +165,7 @@ export function EditPhotosScreen({ navigation }: Props) {
                 accessibilityRole="button"
                 accessibilityLabel={`${index + 1}. fotoğrafı ana fotoğraf yap`}
                 onPress={() => makePrimary(index)}
+                hitSlop={touchSlopFor(styles.makePrimary.height)}
                 style={styles.makePrimary}
               >
                 <Star size={18} color={colors.textInverse} />

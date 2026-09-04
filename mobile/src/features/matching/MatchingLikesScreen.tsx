@@ -13,7 +13,7 @@ import {
 import { toAppError } from '@shared/lib/errors';
 import { getGenderLabel } from '@shared/lib/profileLabels';
 import { queryKeys } from '@shared/lib/queryKeys';
-import { colors, radius, shadows, spacing } from '@shared/theme';
+import { colors, layout, radius, shadows, spacing } from '@shared/theme';
 import {
   useInfiniteQuery,
   useMutation,
@@ -517,7 +517,9 @@ const styles = StyleSheet.create({
   },
   tab: {
     flex: 1,
-    minHeight: 42,
+    // Adjacent tabs share an edge, so hitSlop here would let one tab answer for
+    // the other. The box carries the whole target instead.
+    minHeight: layout.minimumTouchTarget,
     justifyContent: 'center',
     paddingHorizontal: 4,
     borderRadius: radius.sm,

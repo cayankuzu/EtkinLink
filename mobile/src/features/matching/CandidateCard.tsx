@@ -1,7 +1,7 @@
 import { ProfilePhotoGallery } from '@features/profile/ProfilePhotoGallery';
 import { AppText, IconButton } from '@shared/components';
 import { getGenderLabel } from '@shared/lib/profileLabels';
-import { colors, radius, shadows, spacing } from '@shared/theme';
+import { colors, radius, shadows, spacing, touchSlopFor } from '@shared/theme';
 import type { Candidate } from '@shared/types/domain';
 import { CalendarDays, Heart, MapPin, UserRound, X } from 'lucide-react-native';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
@@ -44,6 +44,7 @@ export function CandidateCard({
           accessibilityLabel={`${eventTitle} etkinliğini aç`}
           onPress={onOpenEvent}
           disabled={!onOpenEvent}
+          hitSlop={touchSlopFor(styles.eventContext.height)}
           style={styles.eventContext}
         >
           <CalendarDays size={18} color={colors.textInverse} />

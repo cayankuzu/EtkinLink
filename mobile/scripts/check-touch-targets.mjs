@@ -91,7 +91,20 @@ function findOpeningTagEnd(source, fromIndex) {
  * is reduced to its smallest edge, because the smallest edge is what limits the
  * reachable area.
  */
-export function readHitSlop(tag) {
+export function readHitSlop(tag, sizes = new Map()) {
+  // `touchSlopFor(styles.x.height)` is the sanctioned way to reach the floor
+  // without moving pixels. The guard resolves it to the number it will produce
+  // rather than trusting the call, so a style change that outgrows the helper
+  // still surfaces here.
+  const derived = /hitSlop=\{touchSlopFor\(\s*(?:styles\.(\w+)\.(?:min)?(width|height|Width|Height)|(\d+))\s*\)\}/u.exec(tag);
+  if (derived) {
+    const size = derived[3] !== undefined
+      ? Number(derived[3])
+      : sizes.get(derived[1])?.[derived[2].toLowerCase()];
+    if (typeof size === 'number') {
+      return Math.max(0, Math.ceil((ANDROID_MINIMUM_DP - size) / 2));
+    }
+  }
   const symmetric = /hitSlop=\{(\d+)\}/u.exec(tag);
   if (symmetric) return Number(symmetric[1]);
   const object = /hitSlop=\{\{([^}]*)\}\}/u.exec(tag);
@@ -115,7 +128,7 @@ export function readStyleNames(tag) {
 export function readSharedControlBase(source, layoutTokens) {
   const sizes = collectStyleSizes(source, layoutTokens);
   const base = sizes.get('base') ?? { width: null, height: null };
-  return { slop: readHitSlop(source), ...base };
+  return { slop: readHitSlop(source, sizes), ...base };
 }
 
 export function findTouchTargetViolations(
@@ -149,8 +162,8 @@ export function findTouchTargetViolations(
     // A tag-level `hitSlop` replaces the component's own; otherwise the shared
     // control's slop still applies.
     const slop = /hitSlop=/u.test(tag)
-      ? readHitSlop(tag)
-      : shared?.slop ?? readHitSlop(tag);
+      ? readHitSlop(tag, sizes)
+      : shared?.slop ?? 0;
     // An override only shrinks the axis it names, so the smallest declared
     // value per axis is what a finger actually gets.
     const width = Math.min(
