@@ -11,6 +11,89 @@ These steps mutate external systems and were not executed by this repository cha
 - **Rollback:** disable deploy workflows first; change protection only with repository-owner approval.
 - **Owner/evidence:** Release owner; `artifacts/manual/github/<sha>/`.
 
+### 1a. Branch protection on `main` — exact command
+
+`main` is currently unprotected. Verified 2026-09-05:
+
+```bash
+gh api repos/cayankuzu/EtkinLink/branches/main/protection
+# {"message":"Branch not protected", "status":"404"}
+```
+
+The eight required contexts below are the exact check-run names, taken from a
+run where every one of them passed, so enabling this cannot block a PR on a
+check that never reports. Do not add a context that has not been observed green
+— a required check that never runs leaves every PR permanently pending.
+
+```bash
+cat > /tmp/etkinlink-main-protection.json <<'JSON'
+{
+  "required_status_checks": {
+    "strict": false,
+    "contexts": [
+      "feature-freeze",
+      "quality",
+      "database-security",
+      "edge-functions",
+      "cloudflare-edge",
+      "secret-scan",
+      "android-debug",
+      "Docker validation gate"
+    ]
+  },
+  "enforce_admins": false,
+  "required_pull_request_reviews": {
+    "dismiss_stale_reviews": true,
+    "require_code_owner_reviews": false,
+    "required_approving_review_count": 0,
+    "require_last_push_approval": false
+  },
+  "restrictions": null,
+  "required_linear_history": false,
+  "allow_force_pushes": false,
+  "allow_deletions": false,
+  "block_creations": false,
+  "required_conversation_resolution": true,
+  "lock_branch": false,
+  "allow_fork_syncing": false
+}
+JSON
+
+gh api -X PUT repos/cayankuzu/EtkinLink/branches/main/protection \
+  --input /tmp/etkinlink-main-protection.json
+```
+
+Choices worth knowing before you run it:
+
+- `required_approving_review_count: 0` — a PR is required, an approval is not.
+  On a one-person project a self-approval requirement is theatre; the checks are
+  the gate.
+- `enforce_admins: false` — deliberate. With it on, a broken `main` cannot be
+  repaired by its owner without first disabling protection, which is the moment
+  protection is most likely to be turned off and left off. Turn it on once there
+  is a second maintainer.
+- `strict: false` — does not force every branch to be rebased onto `main` before
+  merging. `strict: true` on a repository with two long CI workflows means a
+  re-run for every intervening merge.
+- `Docker validation gate` is the aggregator; it already requires the four
+  Docker jobs, so listing them individually would be redundant.
+
+Verify:
+
+```bash
+gh api repos/cayankuzu/EtkinLink/branches/main/protection \
+  -q '{checks: .required_status_checks.contexts,
+       force_push: .allow_force_pushes.enabled,
+       deletion: .allow_deletions.enabled,
+       conversations: .required_conversation_resolution.enabled}'
+```
+
+Undo, if it gets in the way:
+
+```bash
+gh api -X DELETE repos/cayankuzu/EtkinLink/branches/main/protection
+```
+
 ## 2. Create Cloudflare scope, zone, token and stable host
 
 - [ ] **Why/where:** isolate edge protection and stable API DNS; Cloudflare Account/API Tokens and Zone/DNS.
