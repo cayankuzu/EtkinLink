@@ -1,0 +1,45 @@
+# Named, dated exceptions for the deterministic tooling image.
+#
+# This is not a way to quiet the scanner. Every entry names one CVE, says why it
+# cannot be fixed from this repository, and expires — when the date passes Trivy
+# reports it again, which is the point. A new advisory is never covered by an
+# existing entry.
+#
+# Context: this image is the non-production contract-test runner. It never holds
+# production credentials, never serves users, and only ever runs synthetic
+# fixtures. That lowers the blast radius; it does not lower the bar for fixing
+# what can be fixed. Everything fixable was fixed first — pinning npm 12.0.2
+# cleared seven of the eleven advisories the base image shipped with.
+#
+# The four below live inside npm 12.0.2's own bundled dependency tree. npm is
+# required in this image because the contract suite runs the Worker's `check`
+# and `dry-run` scripts through it, and the fixed versions are not reachable
+# without patching npm itself.
+#
+# Review: bump the pinned npm and re-scan. If a newer npm clears an entry,
+# delete it — do not extend the date.
+
+vulnerabilities:
+  - id: CVE-2026-14257
+    statement: >-
+      brace-expansion 5.0.7, bundled inside npm 12.0.2. Not reachable from
+      repository code; npm is invoked only to run the Worker's own scripts.
+    expired_at: 2026-12-01
+
+  - id: CVE-2026-69152
+    statement: >-
+      brace-expansion 5.0.7, bundled inside npm 12.0.2. Same reachability as
+      CVE-2026-14257.
+    expired_at: 2026-12-01
+
+  - id: CVE-2026-69192
+    statement: >-
+      ip-address 10.2.0, bundled inside npm 12.0.2 through its registry client.
+      The image performs no user-supplied address parsing.
+    expired_at: 2026-12-01
+
+  - id: CVE-2026-73566
+    statement: >-
+      tar 7.5.19, bundled inside npm 12.0.2. Only ever extracts package tarballs
+      that npm itself fetched during the build, never fixture input.
+    expired_at: 2026-12-01
