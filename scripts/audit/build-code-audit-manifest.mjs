@@ -15,6 +15,7 @@
  *   --check re-derives the manifest and fails if it differs from the committed
  *   one, so a change that adds unreviewed files cannot land quietly.
  */
+import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
@@ -140,6 +141,22 @@ export function readSignals(contents, classification, file) {
   };
 }
 
+/**
+ * The git blob SHA of the bytes on disk.
+ *
+ * `git ls-files -s` reports the *index* SHA, which for a file being edited is
+ * the previously committed content. Generating the manifest before staging
+ * therefore recorded stale hashes, and `--check` on a fresh clone failed against
+ * them. Hashing what was actually read makes each record describe the content
+ * that was reviewed, and it settles the moment that content is committed.
+ */
+function blobSha(contents) {
+  return createHash("sha1")
+    .update(`blob ${contents.length}\0`)
+    .update(contents)
+    .digest("hex");
+}
+
 async function build() {
   const tracked = git(["ls-files", "-z"]).split("\0").filter(Boolean);
   const blobs = new Map(
@@ -162,33 +179,34 @@ async function build() {
     if (SELF_OUTPUT.test(file)) continue;
     const classification = classify(file);
     counts[classification] = (counts[classification] ?? 0) + 1;
-    if (!REVIEWABLE.has(classification)) {
-      records.push({
-        path: file,
-        blobSha: blobs.get(file) ?? null,
-        classification,
-        review: "NOT_LINE_REVIEWED",
-      });
-      continue;
-    }
-    let contents;
+    let bytes;
     try {
-      contents = await readFile(path.join(repositoryRoot, file), "utf8");
+      bytes = await readFile(path.join(repositoryRoot, file));
     } catch (error) {
       records.push({
         path: file,
-        blobSha: blobs.get(file) ?? null,
+        blobSha: null,
         classification,
         review: "UNREADABLE",
         error: error.code ?? String(error),
       });
       continue;
     }
-    const signals = readSignals(contents, classification, file);
+    const sha = blobSha(bytes);
+    if (!REVIEWABLE.has(classification)) {
+      records.push({
+        path: file,
+        blobSha: sha,
+        classification,
+        review: "NOT_LINE_REVIEWED",
+      });
+      continue;
+    }
+    const signals = readSignals(bytes.toString("utf8"), classification, file);
     reviewedLines += signals.lineCount;
     records.push({
       path: file,
-      blobSha: blobs.get(file) ?? null,
+      blobSha: sha,
       classification,
       review: "REVIEWED",
       ...signals,
