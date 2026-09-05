@@ -38,6 +38,14 @@ function git(args) {
   return result.stdout;
 }
 
+/**
+ * This script's own output. It is excluded from the inventory entirely: a record
+ * for it would carry its own blob SHA and its own line count, both of which
+ * change the moment the file is rewritten, so the manifest could never describe
+ * a settled state.
+ */
+const SELF_OUTPUT = /^quality\/full-code-audit-/u;
+
 const BINARY_EXTENSIONS = new Set([
   ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".ttf", ".otf",
   ".woff", ".woff2", ".jks", ".keystore", ".p8", ".p12", ".dump", ".tar",
@@ -58,10 +66,7 @@ export function classify(file) {
   // output that happens to be committed for type-checking, not code we own.
   if (/(^|\/)worker-configuration\.d\.ts$/u.test(file)) return "GENERATED";
   if (/^artifacts\/|^release-evidence\//u.test(file)) return "EVIDENCE";
-  // This script's own output. Counting it would make the manifest describe
-  // itself, and every regeneration would change the line count it reports, so
-  // `--check` could never settle.
-  if (/^quality\/full-code-audit-/u.test(file)) return "EVIDENCE";
+
   if (/^mobile\/(android|ios)\//u.test(file)) return "OWNED_CONFIG";
   if (/^supabase\/migrations\//u.test(file)) return "OWNED_MIGRATION";
   if (/^supabase\/tests\//u.test(file)) return "OWNED_TEST";
@@ -152,6 +157,9 @@ async function build() {
   let reviewedLines = 0;
 
   for (const file of tracked) {
+    // This script's own output records its own blob SHA, which changes every
+    // time the output is regenerated, so a record for it could never settle.
+    if (SELF_OUTPUT.test(file)) continue;
     const classification = classify(file);
     counts[classification] = (counts[classification] ?? 0) + 1;
     if (!REVIEWABLE.has(classification)) {
