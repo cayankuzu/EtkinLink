@@ -8,9 +8,10 @@ Pazarlama iddiaları ayrıdır: `docs/marketing/claims-register.md`.
 değildir; kanıt, komutun kendisidir. Yerel sonuç uzak CI sonucu yerine
 geçmez, uzak CI sonucu da cihaz/sağlayıcı kanıtı yerine geçmez.
 
-**Aday SHA:** `36a3e105` (`chore/final-release-candidate-aaa`)
+**Aday dal:** `chore/final-release-candidate-aaa`
+**Uzak CI kanıtı:** `b03afee` (Docker 5/5), `36a3e105` (Mobil 7/7)
 **Baz alınan main SHA:** `638742bb`
-**Son güncelleme:** 2026-09-04
+**Son güncelleme:** 2026-09-05
 
 ---
 
@@ -107,8 +108,31 @@ düzelmesiyle görünür oldu:
    dizinine yönlendirildi; 11 düzeltilebilir Node.js CVE'sinden 7'si npm 12.0.2
    pinlenerek kapatıldı, kalan 4'ü adlı ve tarihli istisna olarak kayıtlı.
 
-Nihai build job sonucu `b1a865d` koşusunda kaydedilecektir; kaydedilene kadar
-"yeşil" denmez.
+#### Build job — kapanış, `b03afee`, run `33939826570`
+
+Dört neden sırayla açığa çıktı ve dördü de kapandı. Runner çıktısı:
+
+```
+{"event":"compose_validated","services":["contract-tests","k6","resilience-tests","toxiproxy","upstream-mock"]}
+{"event":"reproducible_build_verified","archives":3,
+ "imageManifestDigest":"sha256:b765d8b1…","configDigest":"sha256:436259c4…"}
+{"event":"evidence_secret_scan_passed","inputs":["artifacts/docker/build","artifacts/docker/supply-chain"]}
+```
+
+| Job | `b03afee` |
+|---|---|
+| `Compose, deterministic build and supply chain` | **success** |
+| `Migration, RLS, restore and contracts` | success |
+| `Toxiproxy resilience` | success |
+| `Bounded synthetic load` | success |
+| `Docker validation gate` (required aggregator) | **success** |
+
+5/5 success.
+
+**Not:** dördüncü neden benim eklediğim regresyondu. npm 12.0.2 pinlendiğinde
+`$NPM_CONFIG_CACHE/_logs` altına duvar saatinden türeyen dosya adları yazıldı ve
+katman her build'de değişti. Kapı bunu `rootfs diffIDs differ` diyerek yakaladı —
+tekrarlanabilirlik kapısının varlık sebebi tam olarak budur.
 
 ---
 
