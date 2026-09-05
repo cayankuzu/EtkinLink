@@ -131,7 +131,7 @@ Dört neden sırayla açığa çıktı ve dördü de kapandı. Runner çıktıs�
 
 #### Kararlılık — art arda dört SHA
 
-Tek bir yeşil koşu kanıt değil, tesadüf olabilir. Dal üzerindeki son dört
+Tek bir yeşil koşu kanıt değil, tesadüf olabilir. Dal üzerindeki son altı
 commit'te her iki iş akışı da yeşildir:
 
 | SHA | Mobil kalite kapısı | Docker deterministic validation |
@@ -140,8 +140,10 @@ commit'te her iki iş akışı da yeşildir:
 | `f7fd6cd` | success | success |
 | `2691808` | success | success |
 | `b0924e3` | success | success |
+| `6a63a9e` | success | success |
+| `cdb70ad` (HEAD) | success | success |
 
-Tekrarlanabilirlik kapısı dört ayrı koşuda, her koşuda üç temiz-önbellek
+Tekrarlanabilirlik kapısı altı ayrı koşuda, her koşuda üç temiz-önbellek
 build'le aynı imajı üretti.
 
 **Not:** dördüncü neden benim eklediğim regresyondu. npm 12.0.2 pinlendiğinde
