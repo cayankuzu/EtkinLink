@@ -171,6 +171,31 @@ Bunlar eksiklik olarak açıkça kayıtlıdır; "yapıldı" denmez.
 
 ---
 
+## 4b. Rebase sonrası SHA izlenebilirliği
+
+PR #1 `main`'e **rebase** ile alındı; depo 43 commit boyunca doğrusal tarihçeyi
+korur (0 merge commit). Rebase commit'leri yeniden yazdığı için bu dosyada
+atıfta bulunulan koşu SHA'ları (`36a3e105`, `b03afee`, `cdb70ad`, `dd58440` ve
+diğerleri) `main` üzerinde **bulunmaz**; yalnız
+`origin/chore/final-release-candidate-aaa` ref'i üzerinden erişilebilirler.
+
+**Bu yüzden o dal silinmemelidir.** Silinirse GitHub Actions koşularının bağlı
+olduğu commit'ler ulaşılamaz hale gelir ve bu kütüğün tamamı doğrulanamayan
+iddiaya döner — tam olarak bu dosyanın engellemek için var olduğu şey.
+
+`main` kendi kanıtını ayrıca üretmiştir:
+
+| SHA | Mobil kalite kapısı | Docker deterministic validation |
+|---|---|---|
+| `df8c2da` (`main`) | success | success |
+
+Aday dal ile `main` arasındaki eşleme:
+
+| Aday dal | `main` |
+|---|---|
+| `dd58440` | `df8c2da` |
+| `cdb70ad` | `cd54720` |
+
 ## 5. Yayın kararı
 
 Depo tarafındaki iş bitti; dış kanıt eksik.
