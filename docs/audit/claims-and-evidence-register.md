@@ -64,12 +64,51 @@ index üretir; ne imaj ne attestation orada bulunur.
 
 ## 3. Uzak CI (L2)
 
-PR [#1](https://github.com/cayankuzu/EtkinLink/pull/1) ile aynı SHA'da
-tetiklendi. Sonuçlar bu dosyaya yazılana kadar **iddia edilmez**.
-
+PR [#1](https://github.com/cayankuzu/EtkinLink/pull/1) ile tetiklendi.
 `skipped`, `cancelled`, `neutral`, `timed_out`, `action_required` **PASS
-değildir.** `android-debug` job'ı main'de `skipped` idi; skipped bir kapı
-yeşil sayılmaz.
+değildir.**
+
+### Mobil kalite kapısı — `36a3e105`, run `33917231524`
+
+| Job | main @ `638742bb` | aday @ `36a3e105` |
+|---|---|---|
+| `feature-freeze` | success | **success** |
+| `quality` | success | **success** |
+| `database-security` | success | **success** |
+| `edge-functions` | success | **success** |
+| `cloudflare-edge` | success | **success** |
+| `secret-scan` | **failure** | **success** ← P0-1 kapandı |
+| `android-debug` | **skipped** | **success** ← skipped bir kapı değildi |
+
+7/7 success.
+
+### Docker deterministic validation
+
+| Job | main @ `638742bb` | aday @ `36a3e105` | `de5e97ac` |
+|---|---|---|---|
+| `Migration, RLS, restore and contracts` | **failure** | **success** ← P0-2 kapandı | success |
+| `Toxiproxy resilience` | success | success | success |
+| `Bounded synthetic load` | success | success | success |
+| `Compose, deterministic build and supply chain` | **failure** | failure (farklı neden) | failure (farklı neden) |
+
+Build job'ının üç ayrı nedeni sırayla açığa çıktı; her biri bir öncekinin
+düzelmesiyle görünür oldu:
+
+1. **Image ID uyuşmazlığı** (P0-3, main'deki neden) — `de5e97ac`'de kapandı.
+   Runner çıktısı:
+   `{"event":"reproducible_build_verified","archives":3,`
+   `"imageManifestDigest":"sha256:ae536c2f…","configDigest":"sha256:cc32353a…"}`
+   Üç bağımsız temiz-önbellek build, tek imaj; provenance arşivi aynı manifest'i
+   taşıyor.
+2. **`OCI exporter is not supported for the docker driver`** — runner'ın
+   varsayılan buildx sürücüsü OCI arşivi yazamaz. `docker-container` sürücüsü
+   kuruldu; provenance kapatılmadı.
+3. **Trivy OCI tar'ı okuyamıyor + gerçek CVE'ler** — tarayıcı OCI layout
+   dizinine yönlendirildi; 11 düzeltilebilir Node.js CVE'sinden 7'si npm 12.0.2
+   pinlenerek kapatıldı, kalan 4'ü adlı ve tarihli istisna olarak kayıtlı.
+
+Nihai build job sonucu `b1a865d` koşusunda kaydedilecektir; kaydedilene kadar
+"yeşil" denmez.
 
 ---
 
