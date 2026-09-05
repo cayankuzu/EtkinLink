@@ -29,7 +29,14 @@ ENV HOME=/tmp/home \
 # dependency tree — pacote, picomatch, sigstore and brace-expansion among them.
 # Pinning an exact newer npm clears those without giving up a reproducible
 # toolchain; an unpinned `npm@latest` would trade one problem for another.
-RUN npm install -g npm@12.0.2 && npm cache clean --force
+# The cleanup is part of the reproducibility contract, not tidiness: npm writes
+# its debug logs to `$NPM_CONFIG_CACHE/_logs` under filenames built from the
+# wall clock, and node leaves a compile cache behind, so without this the layer
+# differs on every build and the determinism gate fails. These directories are
+# recreated at runtime; /tmp is writable.
+RUN npm install -g npm@12.0.2 \
+    && npm cache clean --force \
+    && rm -rf /tmp/npm-cache /tmp/node-compile-cache /tmp/home /tmp/xdg-cache /tmp/xdg-config
 
 WORKDIR /workspace
 COPY --from=worker-dependencies --chown=1000:1000 /build/worker/node_modules /workspace/infra/cloudflare/etkinlink-edge/node_modules
