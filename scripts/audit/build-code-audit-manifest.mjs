@@ -58,6 +58,10 @@ export function classify(file) {
   // output that happens to be committed for type-checking, not code we own.
   if (/(^|\/)worker-configuration\.d\.ts$/u.test(file)) return "GENERATED";
   if (/^artifacts\/|^release-evidence\//u.test(file)) return "EVIDENCE";
+  // This script's own output. Counting it would make the manifest describe
+  // itself, and every regeneration would change the line count it reports, so
+  // `--check` could never settle.
+  if (/^quality\/full-code-audit-/u.test(file)) return "EVIDENCE";
   if (/^mobile\/(android|ios)\//u.test(file)) return "OWNED_CONFIG";
   if (/^supabase\/migrations\//u.test(file)) return "OWNED_MIGRATION";
   if (/^supabase\/tests\//u.test(file)) return "OWNED_TEST";
@@ -85,17 +89,25 @@ const REVIEWABLE = new Set([
 ]);
 
 /**
+ * The file that defines the risk patterns cannot be scanned with them: a literal
+ * alternation of TO-DO, FIX-ME and the rest appears in this source by necessity,
+ * so the detector would report itself on every run. Scoped to the one file that
+ * has the problem rather than the directory around it.
+ */
+const PATTERN_SOURCE = "scripts/audit/build-code-audit-manifest.mjs";
+
+/**
  * Signals that decide whether a file carries risk worth a closer read. These are
  * deliberately conservative: they say "look here", not "this is a defect".
  */
-export function readSignals(contents, classification) {
+export function readSignals(contents, classification, file) {
   const lines = contents.split(/\r?\n/u);
   const risks = [];
 
   // Code-risk markers only mean something in code. A document that *reports* how
   // many TODOs the codebase has is not a TODO, and counting it as one turns the
   // manifest into noise nobody reads twice.
-  if (CODE_CLASSIFICATIONS.has(classification)) {
+  if (CODE_CLASSIFICATIONS.has(classification) && file !== PATTERN_SOURCE) {
     // A catch that neither handles nor rethrows swallows the failure.
     if (/catch\s*(?:\([^)]*\))?\s*\{\s*\}/u.test(contents)) risks.push("silent-catch");
     if (/\bas any\b/u.test(contents)) risks.push("as-any");
@@ -164,7 +176,7 @@ async function build() {
       });
       continue;
     }
-    const signals = readSignals(contents, classification);
+    const signals = readSignals(contents, classification, file);
     reviewedLines += signals.lineCount;
     records.push({
       path: file,
