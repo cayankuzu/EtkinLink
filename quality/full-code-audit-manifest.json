@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "commit": "6a63a9e6c900ba6c66e697a67b33c24094836386",
+  "commit": "a7a91ab9d64a3483c58e4d832dc67a16eb978487",
   "generatedFrom": "git ls-files (tracked tree only)",
   "trackedFiles": 563,
   "classificationCounts": {
@@ -16,7 +16,7 @@
     "OWNED_TEST": 81
   },
   "reviewedFiles": 508,
-  "reviewedLines": 82207,
+  "reviewedLines": 82225,
   "unreadableFiles": 0,
   "filesWithRiskSignals": 0,
   "riskSignalCounts": {},
