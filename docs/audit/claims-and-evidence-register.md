@@ -129,6 +129,21 @@ Dört neden sırayla açığa çıktı ve dördü de kapandı. Runner çıktıs�
 
 5/5 success.
 
+#### Kararlılık — art arda dört SHA
+
+Tek bir yeşil koşu kanıt değil, tesadüf olabilir. Dal üzerindeki son dört
+commit'te her iki iş akışı da yeşildir:
+
+| SHA | Mobil kalite kapısı | Docker deterministic validation |
+|---|---|---|
+| `1638dc3` | success | success |
+| `f7fd6cd` | success | success |
+| `2691808` | success | success |
+| `b0924e3` | success | success |
+
+Tekrarlanabilirlik kapısı dört ayrı koşuda, her koşuda üç temiz-önbellek
+build'le aynı imajı üretti.
+
 **Not:** dördüncü neden benim eklediğim regresyondu. npm 12.0.2 pinlendiğinde
 `$NPM_CONFIG_CACHE/_logs` altına duvar saatinden türeyen dosya adları yazıldı ve
 katman her build'de değişti. Kapı bunu `rootfs diffIDs differ` diyerek yakaladı —
