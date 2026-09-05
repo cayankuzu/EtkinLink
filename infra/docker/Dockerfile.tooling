@@ -23,6 +23,14 @@ ENV HOME=/tmp/home \
     XDG_CACHE_HOME=/tmp/xdg-cache \
     CI=true
 
+# The contract suite runs `npm --prefix .../etkinlink-edge run check` and
+# `run dry-run` inside this image, so npm stays. The version bundled with the
+# base image (10.9.8) carries seven fixable HIGH/CRITICAL advisories in its own
+# dependency tree — pacote, picomatch, sigstore and brace-expansion among them.
+# Pinning an exact newer npm clears those without giving up a reproducible
+# toolchain; an unpinned `npm@latest` would trade one problem for another.
+RUN npm install -g npm@12.0.2 && npm cache clean --force
+
 WORKDIR /workspace
 COPY --from=worker-dependencies --chown=1000:1000 /build/worker/node_modules /workspace/infra/cloudflare/etkinlink-edge/node_modules
 COPY --chown=1000:1000 infra/cloudflare/etkinlink-edge /workspace/infra/cloudflare/etkinlink-edge
