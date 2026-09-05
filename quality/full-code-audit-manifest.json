@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "commit": "26918084aefabd96b91e212a2b60f527d96a69c0",
+  "commit": "b0924e33e855944afd3cd9d3387ad9dd79a09fed",
   "generatedFrom": "git ls-files (tracked tree only)",
-  "trackedFiles": 562,
+  "trackedFiles": 563,
   "classificationCounts": {
     "BINARY_ASSET": 46,
     "EVIDENCE": 4,
@@ -10,13 +10,13 @@
     "LOCKFILE": 4,
     "OWNED_CI": 11,
     "OWNED_CONFIG": 77,
-    "OWNED_DOC": 54,
+    "OWNED_DOC": 55,
     "OWNED_MIGRATION": 57,
     "OWNED_SOURCE": 227,
     "OWNED_TEST": 81
   },
-  "reviewedFiles": 507,
-  "reviewedLines": 82063,
+  "reviewedFiles": 508,
+  "reviewedLines": 82199,
   "unreadableFiles": 0,
   "filesWithRiskSignals": 0,
   "riskSignalCounts": {},
