@@ -1,5 +1,19 @@
 # EtkinLink AAA-MVP hardening final release raporu
 
+> **Bu rapor `chore/aaa-mvp-hardening-docker-cloudflare-ota-push` dalı için
+> yazılmıştır ve o dalın durumunu anlatır.** Sonraki release adayı
+> `chore/final-release-candidate-aaa` dalıdır; onun ölçülmüş durumu ayrı
+> dosyalardadır ve bu raporun 9. ve 10. bölümlerindeki "pending" satırlarının
+> bir kısmı orada kapanmıştır:
+>
+> - `docs/audit/current-repository-truth.md` — aday SHA'daki ölçülmüş depo durumu
+> - `docs/audit/claims-and-evidence-register.md` — her iddia → komut → sonuç
+> - `docs/audit/ui-screen-state-matrix.md` — 39 ekranın durum kapsaması
+> - `quality/full-code-audit-manifest.json` — 554 dosyalık denetim envanteri
+>
+> Aşağıdaki 14. bölümdeki **NO-GO** kararı değişmemiştir: cihaz, sağlayıcı ve
+> mağaza kanıtı hâlâ yoktur.
+
 ## 1. Kısa gerçek durum özeti
 
 Bu çalışma `origin/main` üzerindeki `20dc22c76174ab7a9c1a2fae79ed89e45597b57e` başlangıç commit'inden `chore/aaa-mvp-hardening-docker-cloudflare-ota-push` dalında yürütülmüştür. Repository içinde mevcut akışların RSS/ağ sınırları, push token ve receipt yaşam döngüsü, release kanıt zinciri, Supabase testleri ve ölçülü Docker doğrulaması güçlendirilmiştir. Yeni ürün yüzeyi eklenmemiştir.
